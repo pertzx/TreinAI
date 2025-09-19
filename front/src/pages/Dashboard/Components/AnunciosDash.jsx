@@ -548,7 +548,6 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                     state: draft.state,
                     city: draft.city,
                     userId: user.userId,
-                    userId: user.userId
                 }
                 for (const k in obj) {
                     const v = obj[k]
@@ -575,7 +574,6 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                 countryName: draft.countryName,
                 state: draft.state,
                 city: draft.city,
-                userId: user.userId,
                 userId: user.userId,
                 anuncioId: draft.anuncioId
             })
