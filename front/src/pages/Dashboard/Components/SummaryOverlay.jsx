@@ -119,7 +119,6 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
 
     /* -------------------- SVG logo improvements -------------------- */
     const getAppLogoDataUrl = (size = 240) => {
-        // SVG com ícone (halter/dumbbell), gradiente e texto. mais legível e com bordas suaves.
         const svg = `
       <svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${Math.round(size / 3)}' viewBox='0 0 240 64'>
   <defs>
@@ -134,25 +133,20 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
 
   <rect width='240' height='64' rx='12' fill='white' opacity='0.02' />
 
-  <!-- novo ícone estilo Logo: quadrado azul com quadrado interno branco -->
-  <!-- posicionamento: mantém mesma margem da versão anterior (translate(12,12) equivalente) -->
   <g transform='translate(12,12)'>
-    <!-- outer square (fundo azul) -->
     <rect x='0' y='0' width='40' height='40' rx='8' fill='#2563EB' filter='url(#f)' />
-    <!-- inner hole (quadrado branco centralizado) -->
     <rect x='10' y='10' width='20' height='20' rx='5' fill='white' />
   </g>
 
-  <!-- texto do banner -->
-  <text x='68' y='34' font-family='Inter, Arial, Helvetica, sans-serif' font-weight='700' font-size='18' fill='url(#g)'>TreinAI</text>
-  <text x='68' y='50' font-family='Inter, Arial, Helvetica, sans-serif' font-weight='500' font-size='10' fill='#94a3b8'>Muito além do Personal Trainner IA.</text>
+  <text x='68' y='34' font-family='Inter, Arial, Helvetica, sans-serif' font-weight='700' font-size='18' fill='${!isLight ? '#fff' : '#000'}'>TreinAI</text>
+  <text x='68' y='50' font-family='Inter, Arial, Helvetica, sans-serif' font-weight='500' font-size='10' fill='${!isLight ? '#fff' : '#000'}'>Muito além do Personal Trainner IA.</text>
 </svg>
 
     `;
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
     };
 
-    /* -------------------- camera composite (mantive e melhorei) -------------------- */
+    /* -------------------- camera composite (melhorado: sticker maior e tema-aware) -------------------- */
     const createCompositeFromFile = async (file) => {
         if (!file) throw new Error("No file");
         const dataUrl = await new Promise((res, rej) => {
@@ -182,35 +176,50 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
         // draw base image
         ctx.drawImage(img, 0, 0, cw, ch);
 
-        // sticker bottom-left
-        const padding = Math.round(Math.max(12, cw * 0.02));
-        const stickerWidth = Math.round(Math.min(cw * 0.7, 900));
-        const stickerHeight = Math.round(Math.max(80, ch * 0.12));
+        // sticker bottom-left (AUMENTADO) - tamanho proporcional maior
+        const padding = Math.round(Math.max(14, cw * 0.03));
+        const stickerWidth = Math.round(Math.min(cw * 0.85, 1100));
+        const stickerHeight = Math.round(Math.max(120, ch * 0.18));
         const stickerX = padding;
         const stickerY = ch - stickerHeight - padding;
 
-        // background with blur-ish look using semi-transparent rounded rect
-        ctx.fillStyle = "rgba(0,0,0,0.56)";
-        const r = 14;
-        roundRect(ctx, stickerX, stickerY, stickerWidth, stickerHeight, r, true, false);
+        // theme-aware background for sticker
+        const stickerRadius = 18;
+        if (isLight) {
+            // light: semi-translucent white with subtle border
+            ctx.fillStyle = "rgba(255,255,255,0.92)";
+            ctx.strokeStyle = "rgba(2,6,23,0.2)";
+            ctx.lineWidth = 1;
+            roundRect(ctx, stickerX, stickerY, stickerWidth, stickerHeight, stickerRadius, true, true);
+        } else {
+            // dark theme: blur-like dark background with gradient overlay
+            const g = ctx.createLinearGradient(stickerX, stickerY, stickerX + stickerWidth, stickerY + stickerHeight);
+            g.addColorStop(0, "rgba(10,20,40,0.65)");
+            g.addColorStop(1, "rgba(3,7,18,0.5)");
+            ctx.fillStyle = g;
+            ctx.strokeStyle = "rgba(255,255,255,0.04)";
+            ctx.lineWidth = 1;
+            roundRect(ctx, stickerX, stickerY, stickerWidth, stickerHeight, stickerRadius, true, true);
+        }
 
         // text
-        ctx.fillStyle = "#fff";
         ctx.textBaseline = "top";
-        const titleFontSize = Math.round(Math.max(16, cw * 0.025));
+        const titleFontSize = Math.round(Math.max(18, cw * 0.032));
         ctx.font = `700 ${titleFontSize}px Inter, Arial, Helvetica, sans-serif`;
+        ctx.fillStyle = isLight ? "#0f172a" : "#ffffff";
         ctx.fillText(registro.treinoName || "Treino", stickerX + padding, stickerY + padding);
 
-        const smallFontSize = Math.round(Math.max(12, cw * 0.018));
+        const smallFontSize = Math.round(Math.max(12, cw * 0.02));
         ctx.font = `${smallFontSize}px Inter, Arial, Helvetica, sans-serif`;
+        ctx.fillStyle = isLight ? "#475569" : "#cbd5e1";
         const line1 = `Tempo: ${hasValue(total) ? formatSeconds(total) : "-"}`;
         const dateStr = registro.dataExecucao ? (new Date(registro.dataExecucao).toLocaleString()) : new Date().toLocaleString();
-        ctx.fillText(line1, stickerX + padding, stickerY + padding + titleFontSize + 6);
-        ctx.fillText(dateStr, stickerX + padding, stickerY + padding + titleFontSize + 6 + smallFontSize + 4);
+        ctx.fillText(line1, stickerX + padding, stickerY + padding + titleFontSize + 8);
+        ctx.fillText(dateStr, stickerX + padding, stickerY + padding + titleFontSize + 8 + smallFontSize + 6);
 
-        // draw improved logo top-right
+        // draw improved logo top-right of the image (smaller impact)
         const logoUrl = getAppLogoDataUrl();
-        const logoW = Math.round(Math.min(220, cw * 0.18));
+        const logoW = Math.round(Math.min(260, cw * 0.18));
         const logoH = Math.round((64 / 240) * logoW);
         const logoX = cw - logoW - padding;
         const logoY = padding;
@@ -218,15 +227,15 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
         await new Promise((resolve) => {
             const logoImg = new Image();
             logoImg.onload = () => {
-                ctx.fillStyle = "rgba(255,255,255,0.06)";
-                roundRect(ctx, logoX - 8, logoY - 6, logoW + 16, logoH + 12, 10, true, false);
+                ctx.fillStyle = !isLight ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.3)";
+                roundRect(ctx, logoX - 10, logoY - 8, logoW + 20, logoH + 14, 12, true, false);
                 ctx.drawImage(logoImg, logoX, logoY, logoW, logoH);
                 resolve();
             };
             logoImg.onerror = () => {
-                ctx.fillStyle = "#fff";
+                ctx.fillStyle = !isLight ? "#0f172a" : "#fff";
                 ctx.font = `700 ${Math.round(Math.max(14, cw * 0.02))}px Inter, Arial, Helvetica, sans-serif`;
-                ctx.fillText("TREINAI", logoX, logoY + (logoH / 2));
+                ctx.fillText("TreinAI", logoX, logoY + (logoH / 2));
                 resolve();
             };
             logoImg.src = logoUrl;
@@ -346,19 +355,15 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
             cacheBust: true,
             useCORS: true,
             filter: (n) => {
-                // remove elements explicitamente marcados para pular captura
                 if (n && n.getAttribute && n.getAttribute('data-skip-capture') !== null) return false;
                 return true;
             }
         };
 
-        // clone and inline images/backgrounds
         const clone = node.cloneNode(true);
 
-        // remove preview elements explicitly (double safety)
         try { const skipEls = Array.from(clone.querySelectorAll('[data-skip-capture]')); skipEls.forEach(el => el.parentNode && el.parentNode.removeChild(el)); } catch (e) { }
 
-        // inline computed background-images using getComputedStyle
         const elements = Array.from(clone.querySelectorAll('*'));
         await Promise.all(elements.map(async (el) => {
             try {
@@ -378,7 +383,6 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
                 }
             } catch (e) { }
 
-            // inline <img> src
             if (el.tagName && el.tagName.toLowerCase() === 'img') {
                 const img = el;
                 const src = img.getAttribute('src');
@@ -394,11 +398,6 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
             }
         }));
 
-        // attach clone off-screen to DOM so html-to-image can render it
-        // clone.style.position = 'fixed';
-        // clone.style.left = '-9999px';
-        // clone.style.top = '0';
-        // clone.style.opacity = '1';
         document.body.appendChild(clone);
 
         try {
@@ -410,14 +409,12 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
             const toBlobFn = htmlToImage.toBlob || htmlToImage.toPng || htmlToImage.toJpeg;
             if (!toBlobFn) throw new Error('html-to-image não expõe toBlob / toPng / toJpeg');
 
-            // prefer toBlob (binary) when available
             if (htmlToImage.toBlob) {
                 const blob = await htmlToImage.toBlob(clone, options);
                 if (!blob) throw new Error('Failed to generate blob');
                 return blob;
             }
 
-            // fallback: dataURL -> blob
             const dataUrl = await htmlToImage.toPng(clone, options);
             return dataURLToBlob(dataUrl);
         } catch (err) {
@@ -519,9 +516,13 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
 
     const goToPerfil = () => navigate("/dashboard/perfil");
 
+    // theme-aware UI helpers
+    const primaryBtnClass = isLight ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:opacity-95';
+    const secondaryBtnClass = isLight ? 'bg-gray-100 text-gray-800 hover:bg-gray-200' : 'bg-gray-800 text-gray-100 hover:bg-gray-700';
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className={`absolute inset-0 ${isLight ? "bg-black/50" : "bg-black/80"} backdrop-blur-sm`} onClick={() => onClose && onClose()} />
+            <div className={`absolute inset-0 ${isLight ? "bg-black/40" : "bg-black/80"} backdrop-blur-sm`} onClick={() => onClose && onClose()} />
 
             <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -534,7 +535,7 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
                 <div className="p-4 md:p-6" ref={overlayRef}>
                     <div className="flex items-start justify-between gap-4 md:gap-6">
                         <div>
-                            <div className="inline-flex items-center px-3 py-1 rounded-full bg-gradient-to-r from-green-400 to-blue-500 text-white text-sm font-semibold">Resumo</div>
+                            <div className={`inline-flex items-center px-3 py-1 rounded-full ${isLight ? 'bg-green-400 text-white' : 'bg-gradient-to-r from-green-400 to-blue-500 text-white'} text-sm font-semibold`}>Resumo</div>
                             <h2 className="text-xl md:text-2xl font-extrabold mt-3">{registro.treinoName}</h2>
                             <p className="text-xs md:text-sm text-gray-400 mt-1">Ótimo trabalho — aqui está um resumo do seu treino.</p>
                         </div>
@@ -547,7 +548,7 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
                             </div>
 
                             {/* logo visível no canto superior direito — será capturada junto com o summary */}
-                            <img src={getAppLogoDataUrl(240)} alt="logo" style={{ width: 120, height: 32, objectFit: 'contain' }} />
+                            <img src={getAppLogoDataUrl(240)} alt="logo" style={{ width: 140, height: 40, objectFit: 'contain' }} />
 
                             <button onClick={() => onClose && onClose()} aria-label="Fechar" className={`p-2 rounded-md hover:opacity-90 ${themeClass(tema, "bg-gray-100 text-gray-700", "bg-gray-800 text-gray-200")}`}>
                                 <FaTimes />
@@ -613,22 +614,23 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
                         <div className={`rounded-xl p-3 mb-4 ${themeClass(tema, 'bg-white', 'bg-gray-800')} shadow-sm border ${isLight ? 'border-gray-100' : 'border-gray-800'}`}>
                             <div className="text-sm font-medium mb-2">Exportar / Compartilhar</div>
                             <div className="flex flex-col gap-2">
-                                <button onClick={exportCSV} className="w-full px-3 py-2 rounded-md bg-blue-600 text-white flex items-center justify-center gap-2 text-sm"><FaDownload /> Exportar CSV</button>
-                                <button onClick={exportPDF} className="w-full px-3 py-2 rounded-md bg-gray-100 text-red-500 font-medium text-sm">Exportar PDF</button>
+                                <button onClick={exportCSV} className={`w-full px-3 py-2 rounded-md ${primaryBtnClass} flex items-center justify-center gap-2 text-sm`}><FaDownload /> Exportar CSV</button>
+                                <button onClick={exportPDF} className={`w-full px-3 py-2 rounded-md ${secondaryBtnClass} font-medium text-sm`}><FaDownload /> Exportar PDF</button>
 
                                 <div className="flex gap-2">
-                                    <button onClick={triggerTakePhoto} className="flex-1 px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm bg-green-600 text-white">
-                                        <FaCamera /> Tirar foto
-                                    </button>
+                                    <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }} onClick={triggerTakePhoto} className={`flex-1 px-3 py-3 rounded-md flex items-center justify-center gap-3 text-sm ${isLight ? 'bg-green-600 text-white' : 'bg-green-500 text-white'}`}>
+                                        <FaCamera size={20} />
+                                        <span className="font-semibold">Tirar foto</span>
+                                    </motion.button>
 
-                                    <button onClick={downloadImage} disabled={processingImage} className={`px-3 py-2 rounded-md flex items-center justify-center gap-2 text-sm ${processingImage ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-800'}`}>
-                                        <FaDownload /> {processingImage ? 'Gerando...' : 'Salvar imagem (resumo)'}
-                                    </button>
+                                    <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }} onClick={downloadImage} disabled={processingImage} className={`px-3 py-3 rounded-md flex items-center justify-center gap-2 text-sm ${processingImage ? 'bg-gray-300 text-gray-700' : 'bg-gray-200 text-gray-800'}`}>
+                                        <FaDownload size={18} /> <span>{processingImage ? 'Gerando...' : 'Salvar imagem (resumo)'}</span>
+                                    </motion.button>
                                 </div>
 
-                                <button onClick={shareImage} disabled={sharing} className="w-full px-3 py-2 rounded-md bg-blue-600 text-white flex items-center justify-center gap-2 text-sm">
-                                    <FaShareAlt /> {sharing ? 'Compartilhando...' : copied ? 'Copiado' : 'Compartilhar imagem'}
-                                </button>
+                                <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }} onClick={shareImage} disabled={sharing} className={`w-full px-3 py-2 rounded-md ${primaryBtnClass} flex items-center justify-center gap-2 text-sm`}>
+                                    <FaShareAlt size={16} /> {sharing ? 'Compartilhando...' : copied ? 'Copiado' : 'Compartilhar imagem'}
+                                </motion.button>
                             </div>
 
                             <input
@@ -644,12 +646,12 @@ const SummaryOverlay = ({ open, onClose, registro, userHistorico = [], tema = "d
                                 <div className="mt-3" data-skip-capture>
                                     <div className="text-xs text-gray-400 mb-2">Pré-visualização rápida (não salva no resumo geral):</div>
                                     <div className="flex items-center gap-3">
-                                        <img src={compositeBlobUrl} alt="preview treino" className="w-44 h-28 object-cover rounded border" />
+                                        <img src={compositeBlobUrl} alt="preview treino" className={`rounded border object-cover`} style={{ width: 240, height: 160 }} />
                                         <div className="flex flex-col gap-2">
-                                            <button onClick={downloadTrainingImage} className="px-3 py-1 rounded bg-blue-600 text-white text-sm flex items-center gap-2">
+                                            <button onClick={downloadTrainingImage} className={`px-3 py-2 rounded ${primaryBtnClass} text-sm flex items-center gap-2`}>
                                                 <FaDownload /> Baixar imagem de treino
                                             </button>
-                                            <button onClick={clearPhotoPreview} className="px-3 py-1 rounded border text-sm">Refazer foto</button>
+                                            <button onClick={clearPhotoPreview} className={`px-3 py-2 rounded ${secondaryBtnClass} text-sm`}>Refazer foto</button>
                                         </div>
                                     </div>
                                 </div>
