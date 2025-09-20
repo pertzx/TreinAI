@@ -4,9 +4,10 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import authRoutes from './routes/authRoutes.js';
-import { StripeWebhook } from './controllers/Stripe.js';
+import { StripeWebhook } from './controllers/stripe.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 
 // cria __filename e __dirname em ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -18,7 +19,14 @@ const app = express();
 // Stripe Webhook (usa raw body)
 app.post('/webhook', express.raw({ type: 'application/json' }), StripeWebhook);
 
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 min
+  max: 100, // 100 requisições por IP
+  message: "Muitas requisiçoes. Tente novamente mais tarde."
+})
+
 // Outros middlewares
+app.use(limiter)
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
