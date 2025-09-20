@@ -18,13 +18,7 @@ function tolerantParseJsonFromText(text) {
   try {
     return JSON.parse(jsonText);
   } catch (err) {
-    // tenta um último recurso: remover trailing commas comuns
-    try {
-      const cleaned = jsonText.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
-      return JSON.parse(cleaned);
-    } catch (err2) {
-      return null;
-    }
+    re
   }
 }
 

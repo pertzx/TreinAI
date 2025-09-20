@@ -1,6 +1,5 @@
 import OpenAI from "openai";
 import User from "../models/User.js";
-import { v4 as uuidv4 } from "uuid";
 import { getBrazilDate } from "../helpers/getBrazilDate.js";
 import Profissional from "../models/Profissional.js";
 
