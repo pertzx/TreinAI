@@ -24,7 +24,11 @@ export const getAnunciosByAdmin = async (req, res) => {
     try {
         const { adminId } = req.body;
 
-        const user = await User.findById(adminId);
+        const user = await User.findById({
+            where: {
+                ...(adminId && { adminId }),
+            }
+        });
         if (user.role !== 'admin') {
             return res.status(403).json({ message: 'Acesso negado. Apenas administradores podem acessar esta rota.' });
         }
@@ -105,7 +109,7 @@ export const getSupportsByAdmin = async (req, res) => {
         if (respondedRaw && respondedRaw !== 'all') {
             if (['responded', 'true', '1'].includes(respondedRaw)) {
                 // resposta existe e não é string vazia
-                and.push({ resposta: { $exists: true, $ne: null}, });
+                and.push({ resposta: { $exists: true, $ne: null }, });
             } else if (['unresponded', 'false', '0'].includes(respondedRaw)) {
                 // resposta inexistente ou vazia
                 and.push({
@@ -193,7 +197,7 @@ export const alterarVisibilidadeSuporte = async (req, res) => {
 
         if (!adminId) return res.json({ msg: 'adminId é obrigatório', success: false })
 
-        const user = await User.findById(adminId)
+        const user = await User.findById({ where: { ...(adminId && { adminId }) } })
         if (!user) return res.json({ msg: 'Não encontrei seu usuário.', success: false })
         if (user.role !== 'admin') return res.json({ msg: 'Somente admins podem fazer isso.', success: false })
 

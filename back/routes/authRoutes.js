@@ -20,10 +20,8 @@ import Profissional from '../models/Profissional.js';
 import { getBrazilDate } from '../helpers/getBrazilDate.js';
 import { adicionarUsuario, deletarMensagem, enviarMensagem, marcarMensagensVistas, pegarChat, pegarChats, removerUsuario } from '../controllers/chatController.js';
 import { conversarNutri } from '../controllers/NutriAI.js';
-import { editarLocal } from '../controllers/LocalController.js';
-import { getLocais } from '../controllers/LocalController.js';
-import { criarAnuncio, editarAnuncio, getAnuncios } from '../controllers/AnunciosController.js';
-import { deletarAnuncio } from '../controllers/AnunciosController.js';
+import { editarLocal, getLocais } from '../controllers/LocalController.js';
+import { criarAnuncio, editarAnuncio, getAnuncios, deletarAnuncio } from '../controllers/AnunciosController.js';
 import { adicionarRespostaSupport, alterarStatusAnuncio, alterarVisibilidadeSuporte, getAnunciosByAdmin, getSupportsByAdmin, getUsers } from '../controllers/AdminController.js';
 import { getSupports, pedirSuporte } from '../controllers/SupportController.js';
 
