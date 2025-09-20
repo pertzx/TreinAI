@@ -6,7 +6,7 @@ const { Schema } = mongoose;
 
 const LocalSchema = new Schema({
   localName: { type: String, required: true },
-  status: { type: String, required: true },
+  status: { type: String, enum: ['ativo', 'inativo'], default: 'inativo' },
   subscriptionId: { type: String, required: true },
   link: { type: String, required: true },
   localType: { type: String, enum: ['clinica-de-fisioterapia', 'academia', 'consultorio-de-nutricionista', 'loja', 'outros'], required: true },

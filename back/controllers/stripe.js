@@ -561,7 +561,7 @@ export const StripeWebhook = async (req, res) => {
             const userId = (session.metadata && session.metadata.userId) || (md && md.userId);
             const quantidade = parseInt((session.metadata && session.metadata.quantidade) || (md && md.quantidade), 10);
             if (!isNaN(quantidade) && quantidade > 0) {
-              const userSaldo = await User.findById({ userId });
+              const userSaldo = await User.findById(userId);
               if (userSaldo) {
                 userSaldo.saldoDeImpressoes = (userSaldo.saldoDeImpressoes || 0) + quantidade;
                 await userSaldo.save();
@@ -659,7 +659,7 @@ export const StripeWebhook = async (req, res) => {
               const baseUrl = (process.env.BASEURL || '').replace(/\/$/, '');
               const imageUrl = pending.filename ? `${baseUrl}/uploads/image-local/${pending.filename}` : null;
 
-              // checar duplicidade (por profissionalId+localName+localType)
+              // checar duplicidade (por userId+localName+localType)
               let exists = null;
               if (pending.userId && pending.localName && pending.localType) {
                 exists = await Local.findOne({ userId: pending.userId, localName: pending.localName, localType: pending.localType });
@@ -733,9 +733,9 @@ export const StripeWebhook = async (req, res) => {
         }
 
         // 3) fallback final: criar a partir da metadata se completa
-        if (md.profissionalId && md.localName && md.localType) {
+        if (md.userId && md.localName && md.localType) {
           try {
-            const exists = await Local.findOne({ profissionalId: md.profissionalId, localName: md.localName, localType: md.localType });
+            const exists = await Local.findOne({ userId: md.userId, localName: md.localName, localType: md.localType });
             if (exists) {
               if (subscriptionId && !exists.subscriptionId) {
                 exists.subscriptionId = subscriptionId;
@@ -748,7 +748,7 @@ export const StripeWebhook = async (req, res) => {
               }
             } else {
               const payloadForLocal = {
-                profissionalId: md.profissionalId,
+                userId: md.userId,
                 localName: md.localName,
                 localDescricao: md.localDescricao || '',
                 localType: md.localType,

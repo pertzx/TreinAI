@@ -91,6 +91,29 @@ export const profissionais = async (req, res) => {
       filter.especialidade = String(especialidade).trim();
     }
 
+    // --- NOVA LÓGICA: quando NÃO for informado userId,
+    // retornar apenas profissionais cujo usuário associado está ativo ---
+    // isto busca os usuários com planInfos.status === 'ativo' e filtra por userId
+    const activeUsers = await User.find({ 'planInfos.status': 'ativo' }).select('_id').lean();
+    const activeIds = (Array.isArray(activeUsers) && activeUsers.length) ? activeUsers.map(u => String(u._id)) : [];
+
+    if (activeIds.length === 0) {
+      // nenhum usuário ativo -> retorna lista vazia (total 0) respeitando paginação
+      return res.status(200).json({
+        success: true,
+        msg: "Lista de profissionais",
+        data: {
+          total: 0,
+          page: Math.max(1, parseInt(page, 10) || 1),
+          perPage: Math.min(100, Math.max(1, parseInt(limit, 10) || 20)),
+          items: []
+        }
+      });
+    }
+
+    // restringe profissionais apenas aos userIds ativos
+    filter.userId = { $in: activeIds };
+
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const perPage = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
     const skip = (pageNum - 1) * perPage;

@@ -56,22 +56,14 @@ export const getLocais = async (req, res) => {
       sort = '-criadoEm'
     } = req.query || {};
 
-    // Se não enviar profissionalId, exigimos ao menos um filtro de local (country/state/city) ou q (busca livre)
-    if (!userId && !country && !state && !city && !q && !localType) {
-      return res.status(400).json({
-        success: false,
-        msg: "Quando userId não for informado, informe ao menos um filtro de local (country/state/city) ou q (busca) ou localType."
-      });
-    }
-
     const filter = {};
 
     if (userId) {
       // busca por user (aceita userId ou ObjectId)
-      filter.userId = String(userId)
+      filter.userId = String(userId);
     }
 
-    // se vier localType (ex.: 'academia', 'clinica-de-fisioterapia', etc.)
+    // se vier localType (ex.: 'academia', 'clinica-de-fisioterapia', etc.) -> aplicamos filtro
     if (localType) filter.localType = String(localType).trim();
 
     // apenas aplicar filtros de país/estado/cidade se foram enviados
@@ -83,6 +75,11 @@ export const getLocais = async (req, res) => {
     if (q && String(q).trim()) {
       const regex = new RegExp(escapeRegex(String(q).trim()), "i");
       filter.$or = [{ localName: regex }, { localDescricao: regex }];
+    }
+
+    // se não foi informado userId, só retornamos locais ativos
+    if (!userId) {
+      filter.status = 'ativo';
     }
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -114,6 +111,7 @@ export const getLocais = async (req, res) => {
     return res.status(500).json({ success: false, msg: "Erro ao buscar locais.", error: error.message || String(error) });
   }
 };
+
 
 // =======================
 // POST /editar-local  (editarLocal)

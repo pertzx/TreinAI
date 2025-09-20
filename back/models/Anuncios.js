@@ -13,7 +13,7 @@ const anuncioSchema = new Schema({
   criadoEm: { type: Date, default: getBrazilDate },
   anuncioTipo: { type: String, enum: ['imagem', 'video'], required: true },
   midiaUrl: { type: String, required: true },
-  status: { type: String, enum: ['ativo', 'inativo'], required: true, default: 'ativo' },
+  status: { type: String, enum: ['ativo', 'inativo'], required: true, default: 'inativo' },
   
   estatisticas: {
     impressoes: { type: Number, default: 0 },

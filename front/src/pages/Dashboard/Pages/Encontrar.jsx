@@ -11,6 +11,7 @@ const TABS = {
 };
 
 const LOCAL_TYPES = [
+  { value: '', label: 'Todos os tipos' },
   { value: 'academia', label: 'Academia' },
   { value: 'clinica-de-fisioterapia', label: 'Clínica de Fisioterapia' },
   { value: 'consultorio-de-nutricionista', label: 'Consultório de Nutricionista' },
@@ -73,6 +74,22 @@ export default function Encontrar({ user, tema = 'dark' }) {
 
   // filtro localType para aba academias
   const [localTypeFilter, setLocalTypeFilter] = useState(null);
+
+  // paginação: estados por lista
+  const [profPage, setProfPage] = useState(1);
+  const [profPerPage, setProfPerPage] = useState(40);
+  const [profTotal, setProfTotal] = useState(0);
+  const [profTotalPages, setProfTotalPages] = useState(1);
+
+  const [locaisPage, setLocaisPage] = useState(1);
+  const [locaisPerPage, setLocaisPerPage] = useState(40);
+  const [locaisTotal, setLocaisTotal] = useState(0);
+  const [locaisTotalPages, setLocaisTotalPages] = useState(1);
+
+  const [receitasPage, setReceitasPage] = useState(1);
+  const [receitasPerPage, setReceitasPerPage] = useState(40);
+  const [receitasTotal, setReceitasTotal] = useState(0);
+  const [receitasTotalPages, setReceitasTotalPages] = useState(1);
 
   const prevRegionRef = useRef({
     country: selectedCountry,
@@ -176,28 +193,69 @@ export default function Encontrar({ user, tema = 'dark' }) {
     setLoadingProf(true);
     setError(null);
 
+    const pageToUse = opts.page ?? profPage ?? 1;
+    const limitToUse = opts.limit ?? profPerPage ?? 10;
+
     const params = {
       q: opts.q ?? search ?? undefined,
       country: opts.country ?? (selectedCountry || undefined),
       state: opts.state ?? (selectedState || undefined),
       city: opts.city ?? (selectedCity || undefined),
       especialidade: opts.especialidade ?? (especialidade || undefined),
-      page: 1,
-      limit: 50
+      page: pageToUse,
+      limit: limitToUse
     };
     Object.keys(params).forEach(k => params[k] === undefined && delete params[k]);
 
     try {
       const res = await api.get('/profissionais', { params, signal: controller.signal });
       if (!mountedRef.current) return;
-      const payload = res?.data;
+      const payload = res?.data || {};
+
+      // Normalize different server shapes and handle a server that returns ALL items in payload.data.items
       let items = [];
-      if (!payload) items = [];
-      else if (Array.isArray(payload)) items = payload;
-      else if (payload.profissionais) items = payload.profissionais;
-      else if (payload.data?.items) items = payload.data.items;
-      else if (payload.profissional) items = [payload.profissional];
-      else if (payload._id || payload.profissionalId) items = [payload];
+      let total = undefined;
+      let perPage = undefined;
+      let pageNum = pageToUse;
+
+      if (Array.isArray(payload)) {
+        items = payload;
+      } else if (payload.profissionais) {
+        items = payload.profissionais;
+        total = payload.total ?? payload.count;
+      } else if (payload.data && Array.isArray(payload.data.items)) {
+        // payload.data may contain the full list and pagination meta
+        const itemsAll = payload.data.items || [];
+        total = payload.data.total ?? itemsAll.length;
+        perPage = payload.data.perPage ?? limitToUse;
+        pageNum = payload.data.page ?? pageToUse;
+
+        // if API returned ALL items in itemsAll we must slice client-side
+        if (itemsAll.length > (perPage || limitToUse)) {
+          const start = (pageToUse - 1) * (perPage || limitToUse);
+          items = itemsAll.slice(start, start + (perPage || limitToUse));
+        } else {
+          items = itemsAll;
+        }
+      } else if (payload.items) {
+        items = payload.items;
+        total = payload.total ?? payload.count ?? items.length;
+        perPage = payload.perPage ?? limitToUse;
+      } else if (payload._id || payload.profissionalId) {
+        items = [payload];
+      } else if (payload.profissional) {
+        items = [payload.profissional];
+      }
+
+      // compute pagination numbers
+      const finalPerPage = perPage ?? limitToUse;
+      const finalTotal = typeof total === 'number' ? total : (Array.isArray(items) ? items.length : 0);
+      const finalTotalPages = Math.max(1, Math.ceil(finalTotal / finalPerPage));
+
+      setProfPerPage(finalPerPage);
+      setProfTotal(finalTotal);
+      setProfTotalPages(finalTotalPages);
+      setProfPage(pageNum);
 
       if (!items.length) {
         setProfissionais([]);
@@ -216,6 +274,7 @@ export default function Encontrar({ user, tema = 'dark' }) {
       }
     } catch (err) {
       if (err.name === 'CanceledError' || err.message === 'canceled') {
+        // abortado — silencioso
       } else {
         console.error('Erro fetchProfissionais:', err);
         setError('Falha ao carregar profissionais. Usando dados locais.');
@@ -235,63 +294,91 @@ export default function Encontrar({ user, tema = 'dark' }) {
     setLoadingLocais(true);
     setError(null);
 
-    // IMPORTANT: sempre enviar user._id (usuário logado) para a rota /locais
-    // NÃO enviar parâmetros relacionados a profissional (profissionalId) conforme solicitado.
+    const pageToUse = opts.page ?? locaisPage ?? 1;
+    const limitToUse = opts.limit ?? locaisPerPage ?? 10;
+
     const params = {
       q: opts.q ?? search ?? undefined,
       country: opts.country ?? (selectedCountry || undefined),
       state: opts.state ?? (selectedState || undefined),
       city: opts.city ?? (selectedCity || undefined),
-      // prefer opts.localType, senão o filtro atual do estado localTypeFilter
       localType: opts.localType ?? (localTypeFilter || null),
-      userId: user?._id ?? undefined,
-      page: 1,
-      limit: 50
+      page: pageToUse,
+      limit: limitToUse
     };
-
-    // remove keys undefined
     Object.keys(params).forEach(k => params[k] === undefined && delete params[k]);
 
     try {
       const res = await api.get('/locais', { params, signal: controller.signal });
       if (!mountedRef.current) return;
-      const payload = res?.data;
+      const payload = res?.data || {};
       let items = [];
+      let total = undefined;
+      let perPage = undefined;
+      let pageNum = pageToUse;
+
+      if (payload) console.log('fetchLocais payload:', payload);
 
       if (!payload) items = [];
       else if (Array.isArray(payload)) items = payload;
-      else if (payload.data?.items) items = payload.data.items;
-      else if (payload.items) items = payload.items;
-      else if (payload.locais) items = payload.locais;
+      else if (payload.data && Array.isArray(payload.data.items)) {
+        const itemsAll = payload.data.items || [];
+        total = payload.data.total ?? itemsAll.length;
+        perPage = payload.data.perPage ?? limitToUse;
+        pageNum = payload.data.page ?? pageToUse;
+        if (itemsAll.length > (perPage || limitToUse)) {
+          const start = (pageToUse - 1) * (perPage || limitToUse);
+          items = itemsAll.slice(start, start + (perPage || limitToUse));
+        } else {
+          items = itemsAll;
+        }
+      } else if (payload.items) {
+        items = payload.items;
+        total = payload.total ?? payload.count ?? items.length;
+        perPage = payload.perPage ?? limitToUse;
+      } else if (payload.locais) items = payload.locais;
       else if (payload.data) items = Array.isArray(payload.data) ? payload.data : (payload.data.items || []);
       else items = [];
 
-      const normalized = (items || []).map(it => ({
-        id: it.localId || it.id || it._id || '',
-        link: it.link,
-        localName: it.localName || it.name || it.title || '—',
-        localType: (it.localType || it.type || 'outros'),
-        localDescricao: it.localDescricao || it.description || '',
-        cidade: it.city || it.cidade || '',
-        estado: it.state || it.estado || '',
-        country: it.country || '',
-        imageUrl: it.imageUrl || it.image || null,
-        userId: it.userId || null,
-        raw: it
-      }));
+      // Normaliza e extrai um campo `status` confiável (lowercase)
+      const normalizedAll = (items || []).map(it => {
+        return {
+          id: it.localId || it.id || it._id || '',
+          link: it.link,
+          localName: it.localName || it.name || it.title || '—',
+          localType: (it.localType || it.type || 'outros'),
+          localDescricao: it.localDescricao || it.description || '',
+          cidade: it.city || it.cidade || '',
+          estado: it.state || it.estado || '',
+          country: it.country || '',
+          imageUrl: it.imageUrl || it.image || null,
+          userId: it.userId || null,
+          raw: it
+        };
+      });
 
-      // filtragem cliente (caso backend não respeite localType param)
+      // filtragem cliente por tipo, se necessário
       const wantedType = (opts.localType ?? localTypeFilter ?? '').toString().trim().toLowerCase();
-      const filtered = wantedType ? normalized.filter(x => (x.localType || '').toString().toLowerCase() === wantedType) : normalized;
+      const filteredByType = wantedType ? normalizedAll.filter(x => (x.localType || '').toString().toLowerCase() === wantedType) : normalizedAll;
 
-      setLocais(filtered);
+      // compute pagination numbers
+      const finalPerPage = perPage ?? limitToUse;
+      const finalTotal = typeof total === 'number' ? total : filteredByType.length;
+      const finalTotalPages = Math.max(1, Math.ceil(finalTotal / finalPerPage));
+
+      setLocaisPerPage(finalPerPage);
+      setLocaisTotal(finalTotal);
+      setLocaisTotalPages(finalTotalPages);
+      setLocaisPage(pageNum);
+
+      setLocais(filteredByType);
+      console.log(locais, 'locais carregados:', filteredByType.length, 'de', filteredByType.length, 'após filtro de tipo');
     } catch (err) {
       if (err.name === 'CanceledError' || err.message === 'canceled') {
         // abortado — silencioso
       } else {
         console.error('Erro fetchLocais:', err);
         setError('Falha ao carregar locais. Usando dados locais.');
-        // fallback: use mocks (mapear campos dos mocks corretamente)
         setLocais(mockAcademias.map(m => ({
           id: m.id || m.localId || '',
           link: m.link,
@@ -305,14 +392,14 @@ export default function Encontrar({ user, tema = 'dark' }) {
           raw: m
         })));
       }
+
+      console.log(locais, 'locais após erro:', locais.length);
     } finally {
       if (mountedRef.current) setLoadingLocais(false);
     }
   };
 
-  // fetchAcademias: wrapper para fetchLocais com localType 'academia' (mantive o nome por compatibilidade)
   const fetchAcademias = async (opts = {}) => {
-    // respeita opts.localType se fornecido; senão tenta usar o filtro atual ou 'academia' por compatibilidade
     const localTypeToUse = opts.localType ?? localTypeFilter ?? 'academia';
     return fetchLocais({ ...opts, localType: localTypeToUse });
   };
@@ -324,21 +411,51 @@ export default function Encontrar({ user, tema = 'dark' }) {
 
     setLoadingReceitas(true);
     try {
+      const pageToUse = opts.page ?? receitasPage ?? 1;
+      const limitToUse = opts.limit ?? receitasPerPage ?? 10;
+
       const params = {
         q: opts.q ?? search ?? undefined,
         fonte: receitaFonte === 'all' ? undefined : receitaFonte,
-        page: 1,
-        limit: 50
+        page: pageToUse,
+        limit: limitToUse
       };
       Object.keys(params).forEach(k => params[k] === undefined && delete params[k]);
       const res = await api.get('/receitas', { params, signal: controller.signal });
       if (!mountedRef.current) return;
-      const payload = res?.data;
+      const payload = res?.data || {};
       let items = [];
+      let total = undefined;
+      let perPage = undefined;
+      let pageNum = pageToUse;
+
+      if (payload) console.log('fetchReceitas payload:', payload);
+
       if (Array.isArray(payload)) items = payload;
-      else if (payload?.data?.items) items = payload.data.items;
-      else if (payload?.receitas) items = payload.receitas;
+      else if (payload.data && Array.isArray(payload.data.items)) {
+        const itemsAll = payload.data.items || [];
+        total = payload.data.total ?? itemsAll.length;
+        perPage = payload.data.perPage ?? limitToUse;
+        pageNum = payload.data.page ?? pageToUse;
+        if (itemsAll.length > (perPage || limitToUse)) {
+          const start = (pageToUse - 1) * (perPage || limitToUse);
+          items = itemsAll.slice(start, start + (perPage || limitToUse));
+        } else {
+          items = itemsAll;
+        }
+      } else if (payload.receitas) items = payload.receitas;
+      else if (payload.items) items = payload.items;
       else items = [];
+
+      const finalPerPage = perPage ?? limitToUse;
+      const finalTotal = typeof total === 'number' ? total : items.length;
+      const finalTotalPages = Math.max(1, Math.ceil(finalTotal / finalPerPage));
+
+      setReceitasPerPage(finalPerPage);
+      setReceitasTotal(finalTotal);
+      setReceitasTotalPages(finalTotalPages);
+      setReceitasPage(pageNum);
+
       if (!items.length) setReceitas(mockReceitas);
       else setReceitas(items);
     } catch (err) {
@@ -371,18 +488,19 @@ export default function Encontrar({ user, tema = 'dark' }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ======= correção do useEffect (debounce) ======= */
-
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    // reset pages on filter/search/tab change
+    setProfPage(1);
+    setLocaisPage(1);
+    setReceitasPage(1);
+
     debounceRef.current = setTimeout(() => {
       fetchProfissionais();
-      // buscar academias/locais apenas quando aba for academias (passa o filtro atual)
       if (tab === TABS.ACADEMIAS) {
         fetchLocais({ localType: localTypeFilter });
       }
-      // caso queira sempre pré-carregar locais, descomente a linha abaixo:
-      // else fetchLocais({ localType: localTypeFilter });
       fetchReceitas();
     }, 400);
 
@@ -408,31 +526,27 @@ export default function Encontrar({ user, tema = 'dark' }) {
   /* --------------------- UI helpers --------------------- */
   const norm = (v) => String(v ?? '').toLowerCase().trim();
 
-  // constrói o link público de solicitação do coach e navega para ele
   const goToSolicitacao = (prof) => {
     const raw = prof?.raw || {};
     const key = raw.userId || raw.profissionalId || prof.id || raw._id || '';
     if (!key) {
-      // fallback: usa id normalizado
       navigate(`/dashboard/coach/u?q=${encodeURIComponent(prof.id || '')}`);
       return;
     }
     navigate(`/dashboard/coach/u?q=${encodeURIComponent(key)}`);
   };
 
-  // // Ao clicar ver locais do profissional -> chama fetchLocais com profissionalId e muda para aba academias
-  // const verLocaisDoProfissional = async (prof) => {
-  //   // NOTE: estamos intencionalmente não enviando profissionalId para a rota /locais conforme solicitado.
-  //   // Se você precisa filtrar por profissional, faça um fetch sem profissionalId e filtre client-side pelos locais
-  //   // que tenham raw.profissionalId igual ao profissional desejado, ou implemente um endpoint específico
-  //   // no backend que aceite profissionalId. Exemplo (client-side):
-  //   // setTab(TABS.ACADEMIAS);
-  //   // setLocalTypeFilter('academia');
-  //   // await fetchLocais();
-  //   // setLocais(prev => prev.filter(l => l.profissionalId === (prof.raw?.profissionalId || prof.id)));
-  // };
+  const Pagination = ({ page, totalPages, onPrev, onNext }) => {
+    if (!totalPages || totalPages <= 1) return null;
+    return (
+      <div className="mt-4 flex items-center gap-2">
+        <button onClick={onPrev} className="px-3 py-1 rounded bg-gray-200">Anterior</button>
+        <div className="text-sm">Página {page} de {totalPages}</div>
+        <button onClick={onNext} className="px-3 py-1 rounded bg-gray-200">Próximo</button>
+      </div>
+    );
+  };
 
-  /* --------------------- Render --------------------- */
   return (
     <div className={`p-6 max-w-6xl mx-auto ${themeClass(temaValue, 'bg-white text-gray-900', 'bg-gray-900 text-white')} rounded-md`}>
       <header className="mb-6 w-full text-clip">
@@ -534,18 +648,35 @@ export default function Encontrar({ user, tema = 'dark' }) {
 
             <h2 className="text-xl font-bold mb-3">Receitas</h2>
             {loadingReceitas ? <div>Carregando receitas...</div> : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {receitas.length ? receitas.map(r => (
-                  <div key={r.id || r._id} className={`p-4 rounded-xl ${themeClass(temaValue, 'bg-white', 'bg-gray-800')} shadow-sm border`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-semibold">{r.title}</div>
-                        <div className="text-xs text-gray-400">{r.author} {r.location ? `• ${r.location}` : ''}</div>
+              <div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {receitas.length ? receitas.map(r => (
+                    <div key={r.id || r._id} className={`p-4 rounded-xl ${themeClass(temaValue, 'bg-white', 'bg-gray-800')} shadow-sm border`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-semibold">{r.title}</div>
+                          <div className="text-xs text-gray-400">{r.author} {r.location ? `• ${r.location}` : ''}</div>
+                        </div>
+                        <div className="text-xs text-gray-500">{r.id?.startsWith?.('r') ? 'Receita' : ''}</div>
                       </div>
-                      <div className="text-xs text-gray-500">{r.id?.startsWith?.('r') ? 'Receita' : ''}</div>
                     </div>
-                  </div>
-                )) : <div className="text-sm text-gray-400">Nenhuma receita encontrada.</div>}
+                  )) : <div className="text-sm text-gray-400">Nenhuma receita encontrada.</div>}
+                </div>
+
+                <Pagination
+                  page={receitasPage}
+                  totalPages={receitasTotalPages}
+                  onPrev={() => {
+                    const novo = Math.max(1, receitasPage - 1);
+                    setReceitasPage(novo);
+                    fetchReceitas({ page: novo });
+                  }}
+                  onNext={() => {
+                    const novo = Math.min(receitasTotalPages, receitasPage + 1);
+                    setReceitasPage(novo);
+                    fetchReceitas({ page: novo });
+                  }}
+                />
               </div>
             )}
           </section>
@@ -567,36 +698,52 @@ export default function Encontrar({ user, tema = 'dark' }) {
             </div>
 
             {loadingProf ? <div>Carregando profissionais...</div> : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {profissionais.length ? profissionais.map(p => (
-                  <div key={p.id || p.name} className={`p-4 rounded-xl ${themeClass(temaValue, 'bg-white', 'bg-gray-800')} shadow-sm border`}>
-                    <div className="flex flex-wrap items-start gap-4">
-                      {/* imagem do profissional (se existir) */}
-                      <div className="w-16 h-16 rounded-full overflow-hidden border flex-shrink-0">
-                        {p.imageUrl ? (
-                          <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gray-200 text-black">{(p.name || '—')[0]}</div>
-                        )}
-                      </div>
+              <div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {profissionais.length ? profissionais.map(p => (
+                    <div key={p.id || p.name} className={`p-4 rounded-xl ${themeClass(temaValue, 'bg-white', 'bg-gray-800')} shadow-sm border`}>
+                      <div className="flex flex-wrap items-start gap-4">
+                        <div className="w-16 h-16 rounded-full overflow-hidden border flex-shrink-0">
+                          {p.imageUrl ? (
+                            <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gray-200 text-black">{(p.name || '—')[0]}</div>
+                          )}
+                        </div>
 
-                      <div className="flex-1">
-                        <div className="font-semibold">{p.name}</div>
-                        <div className="text-sm text-gray-500">{p.title}</div>
-                        <div className="text-xs text-gray-400 mt-2">{p.cidade} — {p.estado} — {p.country || '—'}</div>
-                      </div>
+                        <div className="flex-1">
+                          <div className="font-semibold">{p.name}</div>
+                          <div className="text-sm text-gray-500">{p.title}</div>
+                          <div className="text-xs text-gray-400 mt-2">{p.cidade} — {p.estado} — {p.country || '—'}</div>
+                        </div>
 
-                      <div className="flex flex-col gap-2 items-end">
-                        <button
-                          onClick={() => goToSolicitacao(p)}
-                          className="px-3 py-1 rounded-lg bg-blue-600 text-white text-sm"
-                        >
-                          Ver Perfil / Solicitar
-                        </button>
+                        <div className="flex flex-col gap-2 items-end">
+                          <button
+                            onClick={() => goToSolicitacao(p)}
+                            className="px-3 py-1 rounded-lg bg-blue-600 text-white text-sm"
+                          >
+                            Ver Perfil / Solicitar
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )) : <div className="text-sm text-gray-400">Nenhum profissional encontrado com esses filtros.</div>}
+                  )) : <div className="text-sm text-gray-400">Nenhum profissional encontrado com esses filtros.</div>}
+                </div>
+
+                <Pagination
+                  page={profPage}
+                  totalPages={profTotalPages}
+                  onPrev={() => {
+                    const novo = Math.max(1, profPage - 1);
+                    setProfPage(novo);
+                    fetchProfissionais({ page: novo });
+                  }}
+                  onNext={() => {
+                    const novo = Math.min(profTotalPages, profPage + 1);
+                    setProfPage(novo);
+                    fetchProfissionais({ page: novo });
+                  }}
+                />
               </div>
             )}
           </section>
@@ -611,7 +758,6 @@ export default function Encontrar({ user, tema = 'dark' }) {
               <div className="flex items-center flex-wrap sm:flex-nowrap gap-2">
                 <label className="text-sm">Tipo:</label>
                 <select value={localTypeFilter} onChange={(e) => setLocalTypeFilter(e.target.value)} className="px-3 py-2 rounded-lg w-full border">
-                  <option className='text-black' value={null}>Todos os tipos</option>
                   {LOCAL_TYPES.map(t => <option key={t.value} className='text-black' value={t.value}>{t.label}</option>)}
                 </select>
 
@@ -620,38 +766,55 @@ export default function Encontrar({ user, tema = 'dark' }) {
             </div>
 
             {loadingLocais ? <div>Carregando locais...</div> : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {(locais && locais.length) ? locais.map(l => (
-                  <div
-                    key={l.id || l.localName}
-                    style={{
-                      backgroundImage: `url(${l.imageUrl})`,
-                      backgroundPosition: 'center',
-                      backgroundSize: 'cover',
-                      backgroundRepeat: 'no-repeat',
-                    }}
-                    className={`rounded-2xl shadow-sm border ring ring-blue-600 border-gray-800 text-white`}
-                  >
-                    <div className="flex flex-wrap p-4 items-start bg-gradient-to-b rounded-2xl from-black/80 to-black/0 gap-4">
-                      <div className="w-16 h-16 rounded-md overflow-hidden border flex-shrink-0 bg-gray-200">
-                        {l.imageUrl ? <img src={l.imageUrl} alt={l.localName} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-black">LK</div>}
-                      </div>
+              <div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(locais && locais.length) ? locais.map(l => (
+                    <div
+                      key={l.id || l.localName}
+                      style={{
+                        backgroundImage: `url(${l.imageUrl})`,
+                        backgroundPosition: 'center',
+                        backgroundSize: 'cover',
+                        backgroundRepeat: 'no-repeat',
+                      }}
+                      className={`rounded-2xl shadow-sm border ring ring-blue-600 border-gray-800 text-white`}
+                    >
+                      <div className="flex flex-wrap p-4 items-start bg-gradient-to-b rounded-2xl from-black/80 to-black/0 gap-4">
+                        <div className="w-16 h-16 rounded-md overflow-hidden border flex-shrink-0 bg-gray-200">
+                          {l.imageUrl ? <img src={l.imageUrl} alt={l.localName} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-black">LK</div>}
+                        </div>
 
-                      <div className="flex-1">
-                        <div className="font-semibold">{l.localName}</div>
-                        <div className="text-sm contrast-100">{(LOCAL_TYPES.find(t => t.value === l.localType)?.label) || l.localType}</div>
-                        <div className="text-xs contrast-50 mt-2">{l.cidade} — {l.estado} — {l.country || '—'}</div>
-                        {l.localDescricao ? <div className="text-xs mt-2 contrast-100">{l.localDescricao}</div> : null}
-                      </div>
+                        <div className="flex-1">
+                          <div className="font-semibold">{l.localName}</div>
+                          <div className="text-sm contrast-100">{(LOCAL_TYPES.find(t => t.value === l.localType)?.label) || l.localType}</div>
+                          <div className="text-xs contrast-50 mt-2">{l.cidade} — {l.estado} — {l.country || '—'}</div>
+                          {l.localDescricao ? <div className="text-xs mt-2 contrast-100">{l.localDescricao}</div> : null}
+                        </div>
 
-                      <div className="flex flex-col gap-2">
-                        <button className="px-3 py-1 rounded-lg bg-blue-600 text-white text-sm" onClick={() => {
-                          location.href = l.link
-                        }}>Saber mais..</button>
+                        <div className="flex flex-col gap-2">
+                          <button className="px-3 py-1 rounded-lg bg-blue-600 text-white text-sm" onClick={() => {
+                            location.href = l.link
+                          }}>Saber mais..</button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )) : <div className="text-sm text-gray-400">Nenhum local encontrado com esses filtros.</div>}
+                  )) : <div className="text-sm text-gray-400">Nenhum local encontrado com esses filtros.</div>}
+                </div>
+
+                <Pagination
+                  page={locaisPage}
+                  totalPages={locaisTotalPages}
+                  onPrev={() => {
+                    const novo = Math.max(1, locaisPage - 1);
+                    setLocaisPage(novo);
+                    fetchLocais({ page: novo });
+                  }}
+                  onNext={() => {
+                    const novo = Math.min(locaisTotalPages, locaisPage + 1);
+                    setLocaisPage(novo);
+                    fetchLocais({ page: novo });
+                  }}
+                />
               </div>
             )}
           </section>

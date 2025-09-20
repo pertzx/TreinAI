@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import api from '../../../Api.js'
 // Ajuste o caminho abaixo para onde você salvar seu JSON
 import locations from '../../../data/locations.json'
+import { FaLocationPin } from 'react-icons/fa6'
 
 const AnunciosDash = ({ user, tema = 'dark' }) => {
     const [showFormMobile, setShowFormMobile] = useState(true)
@@ -20,7 +21,7 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
     const toggleFormMobile = () => setShowFormMobile(v => !v)
 
     const [saldo, setSaldo] = useState(user.saldoDeImpressoes || 0)
-    const [valor, setValor] = useState('')
+    const [valor, setValor] = useState('') // armazenamos apenas os dígitos (centavos)
     const [erro, setErro] = useState('')
     const [isProcessing, setIsProcessing] = useState(false)
 
@@ -85,15 +86,9 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
         return { value: opt.code || opt.name || opt.value, label: opt.name || opt.label || opt.value }
     }
 
-    // format helpers
-    const formatarValor = (digitsCents) => {
-        if (!digitsCents) return ''
-        const numero = Number(digitsCents) / 100
-        return 'R$ ' + numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    }
     const extrairNumero = (valorFormatado) => (valorFormatado || '').toString().replace(/\D/g, '')
     const formatarReais = (numeroEmReais) => {
-        return 'R$ ' + Number(numeroEmReais).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        return 'R$ ' + Number(numeroEmReais).toLocaleString('pt-BR')
     }
 
     const themeClasses = {
@@ -102,22 +97,33 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
         button: tema === 'dark' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'
     }
 
-    // add saldo (mantive)
+    // add saldo (VALIDAÇÃO: somente números inteiros em reais > 1)
     const handleAdicionarSaldo = async () => {
         try {
             setErro('')
-            const valorNumericoCentavos = parseInt(extrairNumero(valor), 10)
-            if (isNaN(valorNumericoCentavos) || valorNumericoCentavos <= 0) {
-                setErro('Informe um valor maior que zero')
+
+            console.log('Valor a adicionar (simulado):', valor)
+            const valorEmReais = valor
+            if (valorEmReais <= 1) {
+                setErro('O valor precisa ser um número inteiro maior que R$1')
+                setTimeout(() => { setErro('') }, 3000)
                 return
             }
+            if (valorEmReais >= 100000) {
+                setErro('Valor muito alto, máximo R$99.999 entre em contato conosco se precisar de mais.')
+                setTimeout(() => { setErro('') }, 3000)
+                return
+            }
+
             if (!user?._id) {
                 setErro('Dados do user inválidos. Não é possível processar a requisição.')
+                setTimeout(() => { setErro('') }, 3000)
                 return
             }
+
             const payload = {
                 userId: user._id,
-                quantidade: valorNumericoCentavos,
+                quantidade: valorEmReais,
             }
             console.log('payload adicionar-saldo (simulado):', payload)
             setIsProcessing(true)
@@ -133,17 +139,14 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
         } catch (error) {
             setIsProcessing(false)
             setErro(error?.response?.data?.message || 'Erro ao adicionar saldo')
+            setTimeout(() => { setErro('') }, 3000)
             console.error(error)
-        } finally {
-            setInterval(() => {
-                setErro('')
-            }, 4000)
         }
     }
 
     // file
     const MAX_IMAGE_BYTES = 1 * 1024 * 1024 // 1 MB
-    const MAX_VIDEO_BYTES = 35 * 1024 * 1024 // 35 MB
+    const MAX_VIDEO_BYTES = 100 * 1024 * 1024 // 100 MB
 
     const handleFileChange = (e) => {
         const file = e.target.files?.[0]
@@ -228,12 +231,13 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
     }
 
     const fetchAnuncios = async () => {
-        if (!user?.userId) return
+        if (!user?._id) return
         try {
             setLoadingAds(true)
             setAdsError('')
-            const res = await api.get('/anuncios', { params: { userId: user.userId } })
+            const res = await api.get('/anuncios', { params: { userId: user._id } })
             const data = res.data?.anuncios || res.data || []
+            console.log('Anúncios recebidos:', res)
             setAnuncios(Array.isArray(data) ? data : [])
             setLoadingAds(false)
         } catch (err) {
@@ -246,11 +250,11 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
     useEffect(() => {
         fetchAnuncios()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user?.userId])
+    }, [user?._id])
 
     // helper: monta payload de edição apenas com campos que vierem (não nulos/''/undefined)
     const buildEditPayloadObject = (obj) => {
-        const allowed = ['titulo', 'descricao', 'link', 'anuncioTipo', 'countryCode', 'countryName', 'state', 'city', 'userId', 'userId', 'anuncioId']
+        const allowed = ['titulo', 'descricao', 'link', 'anuncioTipo', 'countryCode', 'countryName', 'state', 'city', 'userId', 'anuncioId']
         const payload = {}
         for (const k of allowed) {
             const val = obj[k]
@@ -291,11 +295,13 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
             !anuncio.anuncioTipo
         ) {
             setErro('Preencha todos os campos obrigatórios: título, descrição, link, tipo')
+            setTimeout(() => { setErro('') }, 3000)
             return
         }
 
         if (!isValidUrl(anuncio.link.trim())) {
             setErro('Informe um link válido que comece com http:// ou https://')
+            setTimeout(() => { setErro('') }, 3000)
             return
         }
 
@@ -331,7 +337,7 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                 country: anuncio.countryName,
                 state: anuncio.state,
                 city: anuncio.city,
-                userId: user.userId,
+                userId: user._id,
                 midia: anuncio.midia ? { name: anuncio.midia.name, size: anuncio.midia.size, type: anuncio.midia.type } : null
             })
 
@@ -352,11 +358,8 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
         } catch (err) {
             setIsSubmittingAd(false)
             setErro(err?.response?.data?.message || 'Erro ao enviar anúncio')
+            setTimeout(() => { setErro('') }, 3000)
             console.error(err)
-        } finally {
-            setInterval(() => {
-                setErro('')
-            }, 4000)
         }
     }
 
@@ -376,7 +379,7 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
     const handleDeletarAnuncio = async (anuncioId) => {
         try {
             const payload = {
-                userId: user.userId,
+                userId: user._id,
                 anuncioId: anuncioId
             }
             await api.post('/deletar-anuncio', payload);
@@ -384,16 +387,14 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
             window.location.reload()
         } catch (error) {
             console.error(error);
-        } finally {
-            setInterval(() => {
-                setErro('')
-            }, 4000)
+            setErro(error)
+            setTimeout(() => { setErro('') }, 3000);
         }
     };
 
     // iniciar edição inline/popula form principal e snapshot
     const startEdit = (ad) => {
-        const id = ad.anuncioId || ad._id || ad.id
+        const id = ad.anuncioId
         setEditingId(id)
         const original = {
             anuncioId: id,
@@ -521,23 +522,88 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
     // salvar edição inline (simulado) - envia apenas se houver alterações
     const handleSaveEdit = async (id) => {
         try {
+            setErro('')
+            setSuccessMsg('')
+
             const draft = editDraft
             if (!draft) return
 
+            // validação básica de campos textuais
+            if (
+                !draft.titulo?.trim() ||
+                !draft.descricao?.trim() ||
+                !draft.link?.trim() ||
+                !draft.anuncioTipo
+            ) {
+                setErro('Preencha todos os campos obrigatórios: título, descrição, link, tipo')
+                setTimeout(() => { setErro('') }, 3000)
+                return
+            }
+
+            if (!isValidUrl(draft.link.trim())) {
+                setErro('Informe um link válido que comece com http:// ou https://')
+                setTimeout(() => { setErro('') }, 3000)
+                return
+            }
+
+            // Se NÃO há arquivo novo (editDraft.midia) mas existe uma preview (URL) consideramos que já há mídia
+            const preview = editPreviews[id]
+            const arquivo = draft.midia
+
+            // Se não existe arquivo novo e também não existe preview (usuário removeu ou nunca houve),
+            // então obrigamos anexar a mídia.
+            if (!arquivo && !preview) {
+                setErro('Anexe uma mídia para o anúncio')
+                setTimeout(() => { setErro('') }, 3000)
+                return
+            }
+
+            // Se há arquivo novo, valida tipo/tamanho
+            if (arquivo) {
+                const isImage = arquivo.type.startsWith('image/')
+                const isVideo = arquivo.type.startsWith('video/')
+                if (draft.anuncioTipo === 'imagem' && !isImage) {
+                    setErro('Selecione uma imagem para tipo imagem.')
+                    setTimeout(() => { setErro('') }, 3000)
+                    return
+                }
+                if (draft.anuncioTipo === 'video' && !isVideo) {
+                    setErro('Selecione um vídeo para tipo vídeo.')
+                    setTimeout(() => { setErro('') }, 3000)
+                    return
+                }
+                if (isImage && arquivo.size > MAX_IMAGE_BYTES) {
+                    setErro('Imagem muito grande. O tamanho máximo permitido é 1 MB.')
+                    setTimeout(() => { setErro('') }, 3000)
+                    return
+                }
+                if (isVideo && arquivo.size > MAX_VIDEO_BYTES) {
+                    setErro('Vídeo muito grande. O tamanho máximo permitido é 35 MB.')
+                    setTimeout(() => { setErro('') }, 3000)
+                    return
+                }
+            }
+
+            // comparação com original
             const original = editOriginals[id] || null
             if (!original) {
                 setErro('Original não encontrado para comparação. Reabra o formulário.')
+                setTimeout(() => { setErro('') }, 3000)
                 return
             }
 
-            if (!hasDraftChanges(original, draft)) {
+            // se não houve nenhuma alteração (texto/loc/local) E não há arquivo novo, aborta
+            if (!hasDraftChanges(original, draft) && !arquivo) {
                 setErro('Nenhuma alteração detectada. Altere algum campo antes de enviar.')
+                setTimeout(() => { setErro('') }, 3000)
                 return
             }
 
-            if (draft.midia) {
+            // Se existe arquivo novo -> FormData (envia midia)
+            if (arquivo) {
                 const formData = new FormData()
                 formData.append('anuncioId', draft.anuncioId)
+
                 const obj = {
                     titulo: draft.titulo,
                     descricao: draft.descricao,
@@ -547,7 +613,7 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                     countryName: draft.countryName,
                     state: draft.state,
                     city: draft.city,
-                    userId: user.userId,
+                    userId: user._id,
                 }
                 for (const k in obj) {
                     const v = obj[k]
@@ -559,12 +625,20 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                 console.log(buildEditPayloadObject({ ...obj, anuncioId: draft.anuncioId }))
                 console.log('midia:', { name: draft.midia.name, size: draft.midia.size, type: draft.midia.type })
 
-                // req comentada
-                // const resp = await api.post('/editar-anuncio', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-                setSuccessMsg('REQ DE EDIÇÃO INLINE (simulada) no console. Verifique o payload.')
+                // aqui você enviaria a requisição real:
+                const resp = await api.post('/editar-anuncio', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+
+                if (resp?.data?.success) {
+                    setSuccessMsg('Anúncio editado com sucesso')
+                    await fetchAnuncios()
+                    cancelEdit(id)
+                    window.location.reload()
+                }
+
                 return
             }
 
+            // Caso sem arquivo novo -> JSON payload (apenas campos alterados)
             const jsonPayload = buildEditPayloadObject({
                 titulo: draft.titulo,
                 descricao: draft.descricao,
@@ -574,72 +648,77 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                 countryName: draft.countryName,
                 state: draft.state,
                 city: draft.city,
-                userId: user.userId,
+                userId: user._id,
                 anuncioId: draft.anuncioId
             })
 
-            console.log('EDIÇÃO INLINE (sem mídia) - JSON payload:')
-            console.log(jsonPayload)
-
             // req comentada
-            // const resp = await api.post('/editar-anuncio', jsonPayload)
+            const resp = await api.post('/editar-anuncio', jsonPayload)
 
-            setSuccessMsg('REQ DE EDIÇÃO INLINE (simulada) no console. Verifique o payload.')
+            if (resp?.data?.success) {
+                setSuccessMsg('Anúncio editado com sucesso')
+                await fetchAnuncios()
+                cancelEdit(id)
+                window.location.reload()
+            }
+
             return
 
         } catch (err) {
             console.error(err)
-            setErro('Erro ao preparar edição')
-        } finally {
-            setInterval(() => {
-                setErro('')
-            }, 4000)
+            setErro(err?.response?.data?.msg || 'Erro ao editar anúncio')
+            setTimeout(() => { setErro('') }, 3000)
         }
     }
+
 
     return (
         <div className={`p-6 rounded-lg shadow-md flex flex-col space-y-6 ${themeClasses.container}`}>
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <h3 className="text-xl font-semibold">Saldo atual (valor): {saldo ? formatarReais(saldo / 300) : 'R$ 0,00'}</h3>
+                <div className='flex flex-col space-y-1'>
+                    <h3 className="text-xl font-semibold">Saldo atual (valor): {saldo ? formatarReais(saldo / 175) : 'R$ 0,00'}</h3>
                     <h4 className="text-sm text-gray-500">Saldo de impressões: <span className="font-medium">{saldo}</span></h4>
                 </div>
 
-                <div className="w-full md:w-96 flex items-center gap-2">
+                <div className="w-full grid grid-cols-3 flex-wrap items-center gap-2">
                     <input
                         type="text"
                         inputMode="numeric"
-                        value={formatarValor(valor)}
+                        value={formatarReais(valor)}
                         onChange={e => { const digits = extrairNumero(e.target.value); setValor(digits) }}
-                        placeholder="Valor a adicionar (ex: 1,00)"
-                        className={`flex-1 rounded-md p-2 border ${themeClasses.input} focus:ring-2 focus:ring-blue-500 outline-none`}
+                        placeholder="Valor a adicionar (ex: 2,00)"
+                        className={`col-span-3 md:col-span-2 rounded-md p-2 border ${themeClasses.input} focus:ring-2 focus:ring-blue-500 outline-none`}
                     />
-                    <button onClick={handleAdicionarSaldo} disabled={isProcessing} className={`${themeClasses.button} px-4 py-2 rounded-md transition-colors duration-200 ${isProcessing ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                    <button onClick={handleAdicionarSaldo} disabled={isProcessing} className={`${themeClasses.button} px-4 col-span-3 md:col-span-1 py-2 rounded-md transition-colors duration-200 ${isProcessing ? 'opacity-60 cursor-not-allowed' : ''}`}>
                         {isProcessing ? 'Processando...' : 'Adicionar Saldo'}
                     </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-6">
-                <div className={`col-span-1 lg:col-span-1 p-4 rounded-lg border ${tema === 'dark' ? 'border-gray-700' : 'border-gray-200'} ${themeClasses.container}`}>
+            <div className="grid grid-cols-5 gap-6">
+                <div className={`col-span-5 lg:col-span-3 p-4 rounded-lg border ${tema === 'dark' ? 'border-gray-700' : 'border-gray-200'} ${themeClasses.container}`}>
                     <h2 className="text-lg font-bold mb-3">Adicionar Anúncio</h2>
                     <form onSubmit={handleSubmitAnuncio} className="space-y-3">
+                        <label className="block text-sm">Titulo</label>
                         <input type="text" name="titulo" value={anuncio.titulo} onChange={handleAnuncioChange} placeholder="Título" className={`w-full rounded-md p-2 border ${themeClasses.input}`} />
+                        <label className="block text-sm mt-2">Descrição</label>
                         <input type='text' name="descricao" value={anuncio.descricao} onChange={handleAnuncioChange} placeholder="Descrição" className={`w-full rounded-md p-2 border ${themeClasses.input}`} />
+                        <label className="block text-sm mt-2">Link</label>
                         <input type="text" name="link" value={anuncio.link} onChange={handleAnuncioChange} placeholder="Link" className={`w-full rounded-md p-2 border ${themeClasses.input}`} />
 
+                        <label className="block text-sm mt-2">Tipo de midia</label>
                         <select name="anuncioTipo" value={anuncio.anuncioTipo} onChange={handleAnuncioChange} className={`w-full rounded-md p-2 border ${themeClasses.input}`}>
                             <option value="imagem">Imagem</option>
                             <option value="video">Vídeo</option>
                         </select>
 
-                        <label className="block text-sm">País</label>
+                        <label className="block text-sm mt-2">País</label>
                         <select name="countryCode" value={anuncio.countryCode ?? ''} onChange={handleAnuncioChange} className={`w-full rounded-md p-2 border ${themeClasses.input}`}>
                             <option value="">Selecione o país</option>
                             {countryList.map(c => <option key={c.code || c.name} value={c.code || c.name}>{c.name}</option>)}
                         </select>
 
-                        <label className="block text-sm">Estado</label>
+                        <label className="block text-sm mt-2">Estado</label>
                         <select name="state" value={anuncio.state ?? ''} onChange={handleAnuncioChange} className={`w-full rounded-md p-2 border ${themeClasses.input}`} disabled={!getStatesForCountryCode(anuncio.countryCode).length}>
                             <option value="">Selecione o estado</option>
                             {getStatesForCountryCode(anuncio.countryCode).map((s, idx) => {
@@ -648,7 +727,7 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                             })}
                         </select>
 
-                        <label className="block text-sm">Cidade</label>
+                        <label className="block text-sm mt-2">Cidade</label>
                         <select name="city" value={anuncio.city ?? ''} onChange={handleAnuncioChange} className={`w-full rounded-md p-2 border ${themeClasses.input}`} disabled={!getCitiesForState(anuncio.countryCode, anuncio.state).length}>
                             <option value="">Selecione a cidade</option>
                             {getCitiesForState(anuncio.countryCode, anuncio.state).map((c, idx) => {
@@ -657,13 +736,16 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                             })}
                         </select>
 
-                        <input type="file" accept={anuncio.anuncioTipo === 'imagem' ? 'image/*' : 'video/*'} onChange={handleFileChange} className={`w-full rounded-md p-2 border ${themeClasses.input}`} />
+                        <label for="fileUpload" className={`w-full rounded-md p-2 border ${themeClasses.input} flex flex-col items-center justify-center cursor-pointer mt-2 ${fileError ? 'border-red-500' : ''}`}>
+                            <span>Selecione a midia do anuncio.</span>
+                        </label>
+                        <input type="file" id='fileUpload' accept={anuncio.anuncioTipo === 'imagem' ? 'image/*' : 'video/*'} onChange={handleFileChange} className='hidden' />
                         {fileError && <div className="text-red-500 text-sm">{fileError}</div>}
 
                         {previewUrl && anuncio.anuncioTipo === 'imagem' && <img src={previewUrl} alt="preview" className="max-h-40 rounded-md mt-2 w-full object-contain" />}
                         {previewUrl && anuncio.anuncioTipo === 'video' && <video src={previewUrl} controls className="max-h-48 rounded-md mt-2 w-full object-contain" />}
 
-                        <button type="submit" disabled={isSubmittingAd} className={`${themeClasses.button} px-4 py-2 rounded-md transition-colors duration-200 w-full ${isSubmittingAd ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                        <button type="submit" className={`${themeClasses.button} px-4 py-2 rounded-md transition-colors duration-200 w-full ${isSubmittingAd ? 'opacity-60 cursor-not-allowed' : ''}`}>
                             {isSubmittingAd ? 'Enviando...' : (anuncio.anuncioId ? 'Salvar Alterações' : 'Adicionar Anúncio')}
                         </button>
                         {successMsg && (
@@ -679,7 +761,7 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                     </form>
                 </div>
 
-                <div className={`col-span-1 p-4 rounded-lg border ${tema === 'dark' ? 'border-gray-700' : 'border-gray-200'} ${themeClasses.container}`}>
+                <div className={`col-span-5 lg:col-span-2 p-4 rounded-lg border ${tema === 'dark' ? 'border-gray-700' : 'border-gray-200'} ${themeClasses.container}`}>
                     <h2 className="text-lg font-bold mb-3">Seus Anúncios</h2>
 
                     {loadingAds && (
@@ -698,10 +780,13 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                             const id = ad.anuncioId || ad._id || ad.id
                             const mediaUrl = ad.midiaUrl || ad.midia || ad.mediaUrl || ad.image
                             const isEditingThis = editingId === id
+                            const estatisticas = ad.estatisticas || { impressoes: 0, cliques: 0 }
 
                             return (
-                                <div id={`ad-card-${id}`} key={id} className={`rounded-lg overflow-hidden border ${themeClasses.container} shadow-sm`}>
+                                <div id={`ad-card-${id}`} key={id} className={`rounded-lg overflow-hidden ${ad.status === 'ativo' ? 'bg-green-400/30 border-green-400' : 'bg-red-400/30 border-red-400'} border p-3 rounded-2xl shadow-sm`}>
                                     <div className="relative p-3">
+                                        <h1 className='text-xl font-light mb-2'>Status: <span className='font-semibold'>{ad.status}</span></h1>
+                                        <h1 className='text-xl font-light mb-2'>{ad.status === 'ativo' ? 'Anuncio em atividade.' : 'Anuncio desativado até o momento. (aguarde o processamento dos admins.)'}</h1>
                                         {!isEditingThis ? (
                                             <>
                                                 <div className="relative h-40 flex items-center justify-center mb-3">
@@ -714,13 +799,20 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                                                     )}
                                                 </div>
 
-                                                <h3 className="font-semibold">Titulo: {ad.titulo}</h3>
-                                                <p className="text-xs mt-1 line-clamp-1">Descrição: {ad.descricao}</p>
-                                                <div className="text-xs mt-2">
+                                                <h3 className="font-light text-xl"><span className='font-semibold'>Titulo: </span> {ad.titulo}</h3>
+                                                <p className="font-light text-sm"><span className='font-semibold'>Descrição: </span> {ad.descricao}</p>
+                                                <p className="text-sm mt-3 font-semibold line-clamp-1 flex flex-row items-center gap-1">Localidade do anuncio <FaLocationPin color={'red'} /></p>
+                                                <div className="text-xs mt-1 font-light">
                                                     Disponível {!ad.country ? 'em Brasil e Portugal' :
                                                         !ad.state ? `em ${ad.country}` :
                                                             !ad.city ? `em ${ad.country} > ${ad.state}` :
                                                                 `em ${ad.country} > ${ad.state} > ${ad.city}`}
+                                                </div>
+
+                                                {/* Estatisticas */}
+                                                <div className={`p-2 bg-green-300/20 rounded mt-3 border border-green-400 text-green-400 text-sm ${tema === 'dark' ? 'bg-green-900/30 border-green-700 text-green-300' : ''}`}>
+                                                    <h1>Impressoes: {estatisticas.impressoes}</h1>
+                                                    <h1>Cliques: {estatisticas.cliques}</h1>
                                                 </div>
 
                                                 <div className="mt-3 flex items-center gap-2">
@@ -732,17 +824,26 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                                         ) : (
                                             <div className="space-y-2">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                                    <input name="titulo" value={editDraft.titulo ?? ''} onChange={(e) => handleEditChange(id, e)} placeholder="Título" className={`w-full rounded-md p-2 border ${themeClasses.input}`} />
-                                                    <select name="anuncioTipo" value={editDraft.anuncioTipo ?? 'imagem'} onChange={(e) => handleEditChange(id, e)} className={`w-full rounded-md p-2 border ${themeClasses.input}`}>
-                                                        <option value="imagem">Imagem</option>
-                                                        <option value="video">Vídeo</option>
-                                                    </select>
+                                                    <div>
+                                                        <label className="text-md">Titulo: </label>
+                                                        <input name="titulo" value={editDraft.titulo ?? ''} onChange={(e) => handleEditChange(id, e)} placeholder="Título" className={`w-full rounded-md p-2 border ${themeClasses.input}`} />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-md">Tipo de midia: </label>
+                                                        <select name="anuncioTipo" value={editDraft.anuncioTipo ?? 'imagem'} onChange={(e) => handleEditChange(id, e)} className={`w-full rounded-md p-2 border ${themeClasses.input}`}>
+                                                            <option value="imagem">Imagem</option>
+                                                            <option value="video">Vídeo</option>
+                                                        </select>
+                                                    </div>
                                                 </div>
 
+                                                <label className="block text-sm mt-2">Descrição</label>
                                                 <input type='text' name="descricao" value={editDraft.descricao ?? ''} onChange={(e) => handleEditChange(id, e)} placeholder="Descrição" className={`w-full rounded-md p-2 border ${themeClasses.input}`} />
 
+                                                <label className="block text-sm mt-2">Link</label>
                                                 <input name="link" type="text" value={editDraft.link ?? ''} onChange={(e) => handleEditChange(id, e)} placeholder="Link" className={`w-full rounded-md p-2 border ${themeClasses.input}`} />
 
+                                                <label className="block text-sm mt-2">Localidade do anúncio:</label>
                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                                                     <select name="countryCode" value={editDraft.countryCode ?? ''} onChange={(e) => handleEditChange(id, e)} className={`w-full rounded-md p-2 border ${themeClasses.input}`}>
                                                         <option value="">Selecione o país</option>
@@ -764,7 +865,10 @@ const AnunciosDash = ({ user, tema = 'dark' }) => {
                                                     </select>
                                                 </div>
 
-                                                <input type="file" accept={editDraft.anuncioTipo === 'imagem' ? 'image/*' : 'video/*'} onChange={(e) => handleEditFileChange(id, e)} className={`w-full rounded-md p-2 border ${themeClasses.input}`} />
+                                                <label for={`editFileUpload-${id}`} className={`w-full rounded-md p-2 border ${themeClasses.input} flex flex-col items-center justify-center cursor-pointer mt-2 ${editFileErrors[id] ? 'border-red-500' : ''}`}>
+                                                    <span>Selecione a midia do anuncio.</span>
+                                                </label>
+                                                <input type="file" id={`editFileUpload-${id}`} accept={editDraft.anuncioTipo === 'imagem' ? 'image/*' : 'video/*'} onChange={(e) => handleEditFileChange(id, e)} className='hidden' />
                                                 {editFileErrors[id] && <div className="text-red-500 text-sm">{editFileErrors[id]}</div>}
 
                                                 {editPreviews[id] && editDraft.anuncioTipo === 'imagem' && <img src={editPreviews[id]} alt="preview-edit" className="max-h-40 rounded-md mt-2 w-full object-contain" />}

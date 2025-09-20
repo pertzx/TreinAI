@@ -10,7 +10,6 @@ const CX = import.meta.env.VITE_CX/*  || 'f64c3a2a558e34696' */;
  * BuscarImagem (com console.logs)
  */
 const BuscarImagem = ({ query, className, imgType = 'svg', chatTreino = false, email, alt }) => {
-  console.log(CX)
   const [img, setImg] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -31,28 +30,24 @@ const BuscarImagem = ({ query, className, imgType = 'svg', chatTreino = false, e
     return () => {
       mountedRef.current = false;
       if (abortRef.current) {
-        console.log('[BuscarImagem] unmount -> aborting previous request');
         abortRef.current.abort();
       }
     };
   }, []);
 
   useEffect(() => {
-    console.log('[BuscarImagem] useEffect triggered', { query, chatTreino, email, imgType, hasGoogleKeys: Boolean(API_KEY && CX) });
 
     // reset state on new query
     setImg(null);
     setError(null);
 
     if (!query || String(query).trim() === '') {
-      console.log('[BuscarImagem] empty query -> skipping fetch');
       setLoading(false);
       return;
     }
 
     // abort previous
     if (abortRef.current) {
-      console.log('[BuscarImagem] aborting previous request before starting new one');
       abortRef.current.abort();
     }
     const ctl = new AbortController();
@@ -62,11 +57,9 @@ const BuscarImagem = ({ query, className, imgType = 'svg', chatTreino = false, e
 
     const fetchImageFromGoogle = async (signal) => {
       // if (!API_KEY || !CX) {
-      //   console.log('[BuscarImagem] Google keys not configured, skipping Google Search');
       //   return null;
       // }
       try {
-        console.log('[BuscarImagem] calling Google Custom Search API (no key printed)');
         const res = await axios.get('https://www.googleapis.com/customsearch/v1', {
           params: {
             key: API_KEY,
@@ -82,16 +75,13 @@ const BuscarImagem = ({ query, className, imgType = 'svg', chatTreino = false, e
         });
 
         const items = res?.data?.items;
-        console.log('[BuscarImagem] Google response items count:', (items && items.length) || 0);
         if (Array.isArray(items) && items.length > 0) {
           const link = items.find(it => it?.link)?.link || items[0].link;
-          console.log('[BuscarImagem] Google found image (URL length):', link ? link.length : 0);
           return link || null;
         }
         return null;
       } catch (err) {
         if (axios.isCancel(err)) {
-          console.log('[BuscarImagem] Google request canceled');
           return null;
         }
         console.warn('[BuscarImagem] Google Search error (will fallback):', err?.response?.data || err?.message || err);
@@ -104,22 +94,18 @@ const BuscarImagem = ({ query, className, imgType = 'svg', chatTreino = false, e
         // 1) when chatTreino try local DB first
         if (chatTreino && email) {
           try {
-            console.log('[BuscarImagem] Trying local DB lookup for', query);
             const res = await api.get('/procurar-exercicio', {
               params: { exercicioName: query, email },
               signal: ctl.signal,
             });
-            console.log('[BuscarImagem] local DB response:', res?.data);
             if (res?.data?.found && res?.data?.exercicio?.imageUrl) {
               if (!mountedRef.current) return;
-              console.log('[BuscarImagem] found image in local DB, using it');
               setImg(res.data.exercicio.imageUrl);
               setLoading(false);
               return;
             }
           } catch (err) {
             if (err.name === 'CanceledError' || err.message === 'canceled') {
-              console.log('[BuscarImagem] local DB request canceled');
               return;
             }
             console.warn('[BuscarImagem] local DB lookup failed (will continue to online):', err?.response?.data || err?.message || err);
@@ -131,13 +117,9 @@ const BuscarImagem = ({ query, className, imgType = 'svg', chatTreino = false, e
         if (googleUrl) {
           if (!mountedRef.current) return;
           setImg(googleUrl);
-          console.log('[BuscarImagem] set image from Google:', googleUrl.slice(0, 80));
           // try save to server (best-effort)
           if (chatTreino && email) {
-            console.log('[BuscarImagem] attempting to save found image to server (best-effort)');
             api.post('/adicionar-exercicio', { exercicioName: query, imageUrl: googleUrl, email })
-              .then(() => console.log('[BuscarImagem] saved image to server (success)'))
-              .catch(e => console.warn('[BuscarImagem] failed to save image to server (ignored):', e?.response?.data || e.message));
           }
           setLoading(false);
           return;
@@ -146,12 +128,10 @@ const BuscarImagem = ({ query, className, imgType = 'svg', chatTreino = false, e
         // 3) fallback to Unsplash (no key required)
         const unsplash = `https://source.unsplash.com/800x600/?${encodeURIComponent(query)}`;
         if (!mountedRef.current) return;
-        console.log('[BuscarImagem] using Unsplash fallback URL:', unsplash);
         setImg(unsplash);
         setLoading(false);
       } catch (err) {
         if (err.name === 'CanceledError' || err.message === 'canceled') {
-          console.log('[BuscarImagem] tryLoad aborted');
           return;
         }
         console.error('[BuscarImagem] unexpected error in tryLoad:', err);
@@ -164,7 +144,6 @@ const BuscarImagem = ({ query, className, imgType = 'svg', chatTreino = false, e
     tryLoad();
 
     return () => {
-      console.log('[BuscarImagem] cleanup -> abort controller');
       ctl.abort();
     };
   }, [query, chatTreino, email, imgType]);
@@ -182,7 +161,6 @@ const BuscarImagem = ({ query, className, imgType = 'svg', chatTreino = false, e
 
   const handleImageClick = (e) => {
     e.stopPropagation();
-    console.log('[BuscarImagem] image clicked, toggling report popover');
     setReportValue(`Imagem do exercício "${query}" — contexto: ChatTreino`);
     setReportError(null);
     setReportSuccess(null);
@@ -190,7 +168,6 @@ const BuscarImagem = ({ query, className, imgType = 'svg', chatTreino = false, e
   };
 
   const handleSendReport = async () => {
-    console.log('[BuscarImagem] sending report', { query, email, reportValue });
     if (!email) {
       setReportError('Usuário não identificado.');
       console.warn('[BuscarImagem] report failed: no email');
@@ -209,7 +186,6 @@ const BuscarImagem = ({ query, className, imgType = 'svg', chatTreino = false, e
     try {
       const payload = { exercicioName: query, explanation: reportValue, email };
       const res = await api.post('/adicionar-report-exercicio', payload);
-      console.log('[BuscarImagem] report response:', res?.data);
       setReportSuccess('Report enviado — obrigado!');
       setShowReport(false);
     } catch (err) {
@@ -223,19 +199,14 @@ const BuscarImagem = ({ query, className, imgType = 'svg', chatTreino = false, e
 
   // render states
   if (loading) {
-    console.log('[BuscarImagem] render: loading state');
     return <p className={className || ''}>Carregando imagem...</p>;
   }
   if (error) {
-    console.log('[BuscarImagem] render: error state', error);
     return <p className={className || ''}>{error}</p>;
   }
   if (!img) {
-    console.log('[BuscarImagem] render: no image found');
     return <p className={className || ''}>Imagem não encontrada</p>;
   }
-
-  console.log('[BuscarImagem] render: image ready (url length):', img.length);
 
   return (
     <div ref={wrapperRef} className={`relative inline-block ${className || ''}`}>

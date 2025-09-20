@@ -1,27 +1,29 @@
 import { useEffect, useState } from 'react';
-import api from '../../Api';
+import api from '../../Api.js';
 import { Link, Route, Routes, useNavigate } from 'react-router-dom';
-import Header from './Components/Header';
-import AdBanner from './Components/AdBanner';
-import MeusTreinos from './Pages/MeusTreinos';
-import Historico from './Pages/Historico';
-import Perfil from './Pages/Perfil';
-import Configuracoes from './Pages/Configuracoes';
-import OnboardingQuestionnaireFitness from './Components/OnboardingQuestionnaireFitness';
-import BuscarImagens from '../../components/BuscarImagens';
-import ChatTreino from './Components/ChatTreino';
-import BMIChart from './Components/BMIchart';
-import HistoricoChart from './Components/HistoricoChart';
-import Encontrar from './Pages/Encontrar';
-import TokensChart from './Components/TokensChart';
+import Header from './Components/Header.jsx';
+import AdBanner from './Components/AdBanner.jsx';
+import MeusTreinos from './Pages/MeusTreinos.jsx';
+import Historico from './Pages/Historico.jsx';
+import Perfil from './Pages/Perfil.jsx';
+import Configuracoes from './Pages/Configuracoes.jsx';
+import OnboardingQuestionnaireFitness from './Components/OnboardingQuestionnaireFitness.jsx';
+import BuscarImagens from '../../components/BuscarImagens.jsx';
+import ChatTreino from './Components/ChatTreino.jsx';
+import BMIChart from './Components/BMIchart.jsx';
+import HistoricoChart from './Components/HistoricoChart.jsx';
+import Encontrar from './Pages/Encontrar.jsx';
+import TokensChart from './Components/TokensChart.jsx';
 import Coach from './Pages/Coach.jsx';
-import CoachEspecifico from './Pages/CoachEspecifico';
-import Chats from '../../components/Chats';
-import Footer from './Components/Footer';
-import ChatNutriAI from './Components/ChatNutriAi';
+import CoachEspecifico from './Pages/CoachEspecifico.jsx';
+import Chats from '../../components/Chats.jsx';
+import Footer from './Components/Footer.jsx';
+import ChatNutriAI from './Components/ChatNutriAi.jsx';
 import InfoCoachs from '../../components/InfoCoachs.jsx';
-import AnunciosDash from './Components/AnunciosDash.jsx';
-import Locais from './Components/Locais.jsx';
+import AnunciosDash from './Pages/AnunciosDash.jsx';
+import Locais from './Pages/Locais.jsx';
+import AdminPage from './Pages/AdminPage/AdminPage.jsx';
+import SupportPage from './Pages/SupportPage.jsx';
 
 const Dashboard = ({ needToPay, plano }) => {
   const [user, setUser] = useState(null);
@@ -188,6 +190,8 @@ const Dashboard = ({ needToPay, plano }) => {
         <div className="w-full h-full">
           <Header tema={tema} user={user} />
           <Routes>
+            <Route path="admin" element={<AdminPage user={user} tema={tema} />} />
+            <Route path="ajuda" element={<SupportPage user={user} tema={tema} />} />
             <Route path="meus-treinos" element={<MeusTreinos tema={tema} user={user} setUser={setUser} />} />
             <Route path="historico" element={<Historico historico={user?.historico} tema={tema} />} />
             <Route path="perfil" element={<Perfil user={user} tema={tema} />} />

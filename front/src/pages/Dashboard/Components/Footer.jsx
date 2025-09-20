@@ -3,20 +3,20 @@ import React, { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { FiInstagram, FiMail, FiGithub, FiArrowUp, FiUser, FiLogOut } from 'react-icons/fi';
 import Logo from '../../../components/Logo';
+import { getBrazilDate } from '../../../../../back/helpers/getBrazilDate';
 
 export default function Footer({
   tema = 'dark',
   user = null,
   onLogout = null,
   links = [
-    { label: 'Sobre', href: '/sobre' },
-    { label: 'Ajuda', href: '/ajuda' },
-    { label: 'Termos', href: '/termos' }
+    { label: 'Sobre', href: '/dashboard/sobre' },
+    { label: 'Ajuda', href: '/dashboard/ajuda' },
+    { label: 'Termos', href: '/dashboard/termos' }
   ],
   social = [
-    { label: 'GitHub', href: 'https://github.com', icon: <FiGithub /> },
-    { label: 'Instagram', href: 'https://instagram.com', icon: <FiInstagram /> },
-    { label: 'Contato', href: 'mailto:hi@example.com', icon: <FiMail /> }
+    { label: 'Instagram', href: 'https://instagram.com/treinai', icon: <FiInstagram /> },
+    { label: 'Contato', href: 'mailto:pyerremarcio098@gmail.com', icon: <FiMail /> }
   ],
   copyrightText = null,
   sticky = false,
@@ -65,7 +65,7 @@ export default function Footer({
                 </div>
                 <div className="min-w-0">
                   <div className="text-sm font-semibold truncate">TreinAI</div>
-                  <div className={`text-xs ${muted} truncate`}>Treinador IA</div>
+                  <div className={`text-xs ${muted} truncate`}>Muito além do Personal Trainner IA.</div>
                 </div>
               </div>
 
@@ -74,7 +74,7 @@ export default function Footer({
               <div className="text-xs">
                 <div className={`${muted}`}>
                   {copyrightText ||
-                    `© ${new Date().getFullYear()} Seu App. Todos os direitos reservados.`}
+                    `© ${new Date(getBrazilDate()).getFullYear()} TreinAI. Todos os direitos reservados.`}
                 </div>
               </div>
             </div>
@@ -110,7 +110,7 @@ export default function Footer({
                   </div>
                   <div className="flex items-center gap-2 ml-2">
                     <a href="/dashboard/perfil" title="Perfil" className="p-2 rounded-md hover:bg-gray-100">
-                      <FiUser  />
+                      <FiUser />
                     </a>
                     <button onClick={handleLogout} title="Sair" className="p-2 rounded-md hover:bg-gray-100">
                       <FiLogOut />

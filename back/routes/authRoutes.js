@@ -9,7 +9,7 @@ import {
   CriarAssinaturaProLocal,
   deletarLocal,
   SessionPaymentSaldoDeImpressoes,
-} from '../controllers/Stripe.js';
+} from '../controllers/stripe.js';
 import { conversar, criarExercicioIA, criarTreinoIA } from '../controllers/UsingIA.js';
 import User from '../models/User.js';
 import { publicarNoHistorico } from '../controllers/database.js';
@@ -22,8 +22,10 @@ import { adicionarUsuario, deletarMensagem, enviarMensagem, marcarMensagensVista
 import { conversarNutri } from '../controllers/NutriAI.js';
 import { editarLocal } from '../controllers/LocalController.js';
 import { getLocais } from '../controllers/LocalController.js';
-import { criarAnuncio, getAnuncios } from '../controllers/AnunciosController.js';
+import { criarAnuncio, editarAnuncio, getAnuncios } from '../controllers/AnunciosController.js';
 import { deletarAnuncio } from '../controllers/AnunciosController.js';
+import { adicionarRespostaSupport, alterarStatusAnuncio, alterarVisibilidadeSuporte, getAnunciosByAdmin, getSupportsByAdmin, getUsers } from '../controllers/AdminController.js';
+import { getSupports, pedirSuporte } from '../controllers/SupportController.js';
 
 const router = Router();
 
@@ -217,7 +219,18 @@ router.post('/adicionar-saldo', SessionPaymentSaldoDeImpressoes);
 router.post('/criar-anuncio', uploadMidiaAnuncio('uploads/midias-anuncio', 'midia'), criarAnuncio);
 router.get('/anuncios', getAnuncios); // query profissionalId (opcional). se nao passar, retorna todos os anuncios disponiveis.
 router.post('/deletar-anuncio', deletarAnuncio); // corpo => profissionalId e anuncioId.
+router.post('/editar-anuncio', uploadMidiaAnuncio('uploads/midias-anuncio', 'midia'), editarAnuncio); // corpo => profissionalId e anuncioId.
 
+// admin
+router.post('/usuarios', getUsers) // body: adminId (obrigatório)
+router.post('/anuncios-by-admin', getAnunciosByAdmin) // body: adminId (obrigatório)
+router.post('/alterar-status-anuncio', alterarStatusAnuncio) // body: adminId, anuncioId, novoStatus (obrigatórios)
+router.get('/supports-by-admin', getSupportsByAdmin) // body: adminId, 
+router.post('/alterarVisibilidade-by-admin', alterarVisibilidadeSuporte) // body: adminId, supportId, boolean
+router.post('/adicionarRespostaSuportAdmin', adicionarRespostaSupport) // body: adminId, supportId, resposta
 
+// support
+router.get('/supports', getSupports) // body: adminId, anuncioId, novoStatus (obrigatórios)
+router.post('/supports', pedirSuporte) // body: adminId, assunto
 
 export default router;

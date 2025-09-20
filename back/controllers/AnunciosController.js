@@ -7,6 +7,13 @@ import User from "../models/User.js";
 dotenv.config();
 
 // =======================
+const deleteFileIfExists = (filename) => {
+    if (!filename) return;
+    const filePath = path.join('uploads/midias-anuncio', filename);
+    if (fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch (err) { console.warn('Erro removendo arquivo:', filePath, err); }
+    }
+};
 
 export const criarAnuncio = async (req, res) => {
     try {
@@ -25,7 +32,7 @@ export const criarAnuncio = async (req, res) => {
         };
 
         // Verify if professional exists
-        const user = await User.findById({ userId });
+        const user = await User.findById(userId);
         if (!user) {
             deleteUploadedFile();
             return res.status(404).json({ msg: "user não encontrado" });
@@ -54,10 +61,10 @@ export const criarAnuncio = async (req, res) => {
                 });
             }
 
-            if (isVideo && fileSize > 50 * MB) {
+            if (isVideo && fileSize > 35 * MB) {
                 deleteUploadedFile();
                 return res.status(400).json({
-                    msg: "Vídeo deve ser menor que 50MB"
+                    msg: "Vídeo deve ser menor que 35MB"
                 });
             }
         }
@@ -82,6 +89,8 @@ export const criarAnuncio = async (req, res) => {
 
         const novoAnuncio = await Anuncio.create(anuncioData);
 
+        novoAnuncio.save();
+
         return res.status(201).json({
             msg: "Anúncio criado com sucesso",
             data: novoAnuncio
@@ -104,14 +113,126 @@ export const criarAnuncio = async (req, res) => {
     }
 }
 
+export const editarAnuncio = async (req, res) => {
+    try {
+        const { anuncioId, link, userId, titulo, descricao, anuncioTipo, country, countryCode, state, city } = req.body;
+        const backendUrl = process.env.BASEURL?.replace(/\/+$/, '');
+        const uploadedFile = req.file;
+
+        // valida básicos
+        if (!anuncioId || !userId) {
+            if (uploadedFile) deleteFileIfExists(uploadedFile.filename);
+            return res.status(400).json({ msg: "anuncioId e userId são obrigatórios para editar", success: false });
+        }
+
+        const anuncio = await Anuncio.findOne({ anuncioId });
+        if (!anuncio) {
+            if (uploadedFile) deleteFileIfExists(uploadedFile.filename);
+            return res.status(404).json({ msg: "Anúncio não encontrado", success: false });
+        }
+
+        // Verifica ownership / permissões (admins podem editar)
+        const user = await User.findById(userId);
+        if (!user) {
+            if (uploadedFile) deleteFileIfExists(uploadedFile.filename);
+            return res.status(404).json({ msg: "user não encontrado", success: false });
+        }
+        if (anuncio.userId !== userId && user.role !== 'admin') {
+            if (uploadedFile) deleteFileIfExists(uploadedFile.filename);
+            return res.status(403).json({ msg: "Não autorizado a editar este anúncio", success: false });
+        }
+
+        // valida upload (se houver)
+        const MB = 1024 * 1024;
+        if (uploadedFile) {
+            const fileSize = uploadedFile.size;
+            const isVideo = uploadedFile.mimetype.startsWith('video/');
+            const isImage = uploadedFile.mimetype.startsWith('image/');
+
+            // Se o cliente mudou o anuncioTipo, respeitamos; se não enviou anuncioTipo, usamos o existente
+            const effectiveTipo = anuncioTipo || anuncio.anuncioTipo;
+
+            if (effectiveTipo === 'imagem' && !isImage) {
+                deleteFileIfExists(uploadedFile.filename);
+                return res.status(400).json({ msg: "Tipo esperado: imagem", success: false });
+            }
+            if (effectiveTipo === 'video' && !isVideo) {
+                deleteFileIfExists(uploadedFile.filename);
+                return res.status(400).json({ msg: "Tipo esperado: vídeo", success: false });
+            }
+
+            if (isImage && fileSize > MB * 1) {
+                deleteFileIfExists(uploadedFile.filename);
+                return res.status(400).json({ msg: "Imagem deve ser menor que 1MB", success: false });
+            }
+            if (isVideo && fileSize > MB * 35) {
+                deleteFileIfExists(uploadedFile.filename);
+                return res.status(400).json({ msg: `Vídeo deve ser menor que 35MB`, success: false });
+            }
+        }
+
+        // Monta o objeto de atualização. **Importante**: só sobrescrevemos midiaUrl se houver upload novo.
+        const anuncioData = {};
+        if (typeof link !== 'undefined') anuncioData.link = link;
+        if (typeof titulo !== 'undefined') anuncioData.titulo = titulo;
+        if (typeof descricao !== 'undefined') anuncioData.descricao = descricao;
+        if (typeof anuncioTipo !== 'undefined') anuncioData.anuncioTipo = anuncioTipo;
+
+        if (typeof country !== 'undefined') anuncioData.country = country;
+        if (typeof countryCode !== 'undefined') anuncioData.countryCode = countryCode;
+        if (typeof state !== 'undefined') anuncioData.state = state;
+        if (typeof city !== 'undefined') anuncioData.city = city;
+
+        // tratamos midia: se enviou arquivo novo, removemos antigo e guardamos novo midiaUrl
+        if (uploadedFile) {
+            try {
+                // Remove arquivo antigo se houver
+                if (anuncio.midiaUrl) {
+                    const oldFilename = anuncio.midiaUrl.split('/').pop();
+                    deleteFileIfExists(oldFilename);
+                }
+            } catch (err) {
+                console.warn('Erro ao deletar mídia antiga (continua):', err);
+            }
+
+            const newMidiaUrl = `${backendUrl}/uploads/midias-anuncio/${uploadedFile.filename}`;
+            anuncioData.midiaUrl = newMidiaUrl;
+        }
+        // Se NÃO houve upload, não tocamos no campo midiaUrl (preserva existente)
+
+        const updated = await Anuncio.findOneAndUpdate({ anuncioId }, anuncioData, { new: true });
+
+        return res.status(200).json({
+            msg: "Anúncio editado com sucesso",
+            anuncio: updated,
+            success: true
+        });
+
+    } catch (error) {
+        if (req.file) deleteFileIfExists(req.file.filename);
+        console.error('Erro ao editar anúncio:', error);
+        return res.status(500).json({
+            msg: "Erro ao editar anúncio",
+            error: error?.message || error,
+            success: true
+        });
+    }
+};
+
 export const getAnuncios = async (req, res) => {
     try {
         const { userId, country, state, city } = req.query;
 
         if (userId) {
+            console.log('Buscando anúncios para o userId:', userId);
+            // Basic security check - verify if the professional exists
+            const user = await User.findById(userId);
+            if (!user) {
+                return res.status(404).json({ msg: "user não encontrado" });
+            }
             // Return all ads for the specific professional
             const anuncios = await Anuncio.find({ userId });
-            return res.status(200).json(anuncios);
+            return res.status(200).json({ anuncios });
         }
 
         // Build location query
@@ -150,16 +271,16 @@ export const getAnuncios = async (req, res) => {
         const availableAnuncios = [];
 
         for (const anuncio of anuncios) {
-            const user = await user.findOne({ userId: anuncio.userId });
+            const user = await User.findById(anuncio.userId);
 
             if (user &&
-                user.saldoDeImpressao > 0 &&
+                user.saldoDeImpressoes > 0 &&
                 anuncio.status === 'ativo') {
                 availableAnuncios.push(anuncio);
             }
         }
 
-        return res.status(200).json(availableAnuncios);
+        return res.status(200).json({ availableAnuncios });
 
     } catch (error) {
         return res.status(500).json({
@@ -179,7 +300,7 @@ export const deletarAnuncio = async (req, res) => {
         }
 
         // Basic security check - verify if the professional owns this ad
-        const user = await User.findById({ userId });
+        const user = await User.findById(userId);
 
         if (!user) {
             return res.status(404).json({ msg: "user não encontrado" });
@@ -199,7 +320,7 @@ export const deletarAnuncio = async (req, res) => {
         }
 
         // Delete from database
-        await Anuncio.findOneAndDelete(anuncioId);
+        await Anuncio.findOneAndDelete({ anuncioId });
 
         return res.status(200).json({ msg: "Anúncio deletado com sucesso" });
 
