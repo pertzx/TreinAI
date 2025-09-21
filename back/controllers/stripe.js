@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import User from '../models/User.js';
 import bcrypt from 'bcrypt';
-import Local from '../models/local.js';
+import Local from '../models/Local.js';
 import ProcessedStripeEvent from '../models/ProcessedStripeEvent.js';
 import mongoose from 'mongoose';
 import Profissional from '../models/Profissional.js';
