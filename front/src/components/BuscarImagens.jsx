@@ -3,8 +3,8 @@ import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import api from '../Api';
 
-const API_KEY = import.meta.env.VITE_API_GOOGLE_SEARCH_IMAGES/* || 'AIzaSyB2tqMqFXuarJ6ZW761V64yRGGWTg_J_Bg' */;
-const CX = import.meta.env.VITE_CX/*  || 'f64c3a2a558e34696' */;
+const API_KEY = import.meta.env.VITE_API_GOOGLE_SEARCH_IMAGES;
+const CX = import.meta.env.VITE_CX;
 
 /**
  * BuscarImagem (com console.logs)

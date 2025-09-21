@@ -15,8 +15,11 @@ export const procurarExercicio = async (req, res) => {
         const user = await User.findOne({ email });
         if (!user) return res.status(404).json({ ok: false, msg: 'User not found' });
 
-        // case-insensitive exact match (helps with accents/case)
-        const exercicio = await Exercicio.findOne({ exercicioName: new RegExp(`^${exercicioName}$`, 'i') });
+        const exercicio = await Exercicio.findOne({
+            $where: {
+                ...(exercicioName && { exercicioName })
+            }
+        });
 
         if (!exercicio) return res.status(200).json({ ok: true, found: false, msg: 'Exercicio nao encontrado' });
 
@@ -88,7 +91,11 @@ export const adicionarReport = async (req, res) => {
         if (!user) return res.status(404).json({ ok: false, msg: 'Não conseguimos encontrar o seu usuario.' });
 
         // busca case-insensitive pelo exercício
-        const exercicio = await Exercicio.findOne({ exercicioName: new RegExp(`^${exercicioName}$`, 'i') });
+        const exercicio = await Exercicio.findOne({
+            $where: {
+                ...(exercicioName && { exercicioName })
+            }
+        });
         if (!exercicio) {
             return res.status(404).json({ ok: false, msg: 'Exercicio nao encontrado' });
         }

@@ -50,6 +50,8 @@ export const alterarStatusAnuncio = async (req, res) => {
         if (!user || user.role !== 'admin') {
             return res.status(403).json({ msg: 'Acesso negado. Apenas administradores podem acessar esta rota.' });
         }
+        
+        if (!anuncioId) return res.json({ msg: '!anuncioId' });
 
         const anuncio = await Anuncio.findOne({ anuncioId });
         if (!anuncio) {

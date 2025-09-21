@@ -18,7 +18,7 @@ function tolerantParseJsonFromText(text) {
   try {
     return JSON.parse(jsonText);
   } catch (err) {
-    re
+    return null
   }
 }
 
