@@ -3,8 +3,32 @@ import dotenv from "dotenv";
 import fs from 'fs'
 import path from "path";
 import User from "../models/User.js";
+import validator from 'validator';
+import mongoose from 'mongoose';
 
 dotenv.config();
+
+// Validação de ObjectId
+const isValidObjectId = (id) => {
+    return id && mongoose.Types.ObjectId.isValid(id);
+};
+
+// Sanitização de entrada
+const sanitizeInput = (input) => {
+    if (typeof input !== 'string') return input;
+    return validator.escape(input.trim());
+};
+
+// Validação de URL
+const isValidUrl = (url) => {
+    if (!url || typeof url !== 'string') return false;
+    try {
+        const u = new URL(url);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch (e) {
+        return false;
+    }
+};
 
 // =======================
 const deleteFileIfExists = (filename) => {
@@ -17,7 +41,18 @@ const deleteFileIfExists = (filename) => {
 
 export const criarAnuncio = async (req, res) => {
     try {
-        const { link, userId, titulo, descricao, anuncioTipo, country, countryCode, state, city } = req.body;
+        const { 
+            link: rawLink, 
+            userId, 
+            titulo: rawTitulo, 
+            descricao: rawDescricao, 
+            anuncioTipo, 
+            country: rawCountry, 
+            countryCode: rawCountryCode, 
+            state: rawState, 
+            city: rawCity 
+        } = req.body;
+        
         const backendUrl = process.env.BASEURL?.replace(/\/+$/, '');
         const uploadedFile = req.file;
 
@@ -30,6 +65,41 @@ export const criarAnuncio = async (req, res) => {
                 }
             }
         };
+
+        // Validações de entrada
+        if (!isValidObjectId(userId)) {
+            deleteUploadedFile();
+            return res.status(400).json({ msg: "ID de usuário inválido" });
+        }
+        
+        if (!isValidUrl(rawLink)) {
+            deleteUploadedFile();
+            return res.status(400).json({ msg: "Link inválido" });
+        }
+        
+        if (!rawTitulo || rawTitulo.trim().length < 3 || rawTitulo.trim().length > 100) {
+            deleteUploadedFile();
+            return res.status(400).json({ msg: "Título deve ter entre 3 e 100 caracteres" });
+        }
+        
+        if (!rawDescricao || rawDescricao.trim().length < 10 || rawDescricao.trim().length > 500) {
+            deleteUploadedFile();
+            return res.status(400).json({ msg: "Descrição deve ter entre 10 e 500 caracteres" });
+        }
+        
+        if (!['imagem', 'video'].includes(anuncioTipo)) {
+            deleteUploadedFile();
+            return res.status(400).json({ msg: "Tipo de anúncio inválido" });
+        }
+        
+        // Sanitizar entradas
+        const link = rawLink.trim();
+        const titulo = sanitizeInput(rawTitulo);
+        const descricao = sanitizeInput(rawDescricao);
+        const country = rawCountry ? sanitizeInput(rawCountry) : null;
+        const countryCode = rawCountryCode ? sanitizeInput(rawCountryCode) : null;
+        const state = rawState ? sanitizeInput(rawState) : null;
+        const city = rawCity ? sanitizeInput(rawCity) : null;
 
         // Verify if professional exists
         const user = await User.findById(userId);
@@ -67,6 +137,17 @@ export const criarAnuncio = async (req, res) => {
                     msg: "Vídeo deve ser menor que 35MB"
                 });
             }
+            
+            // Validar tipo de arquivo
+            if (anuncioTipo === 'imagem' && !isImage) {
+                deleteUploadedFile();
+                return res.status(400).json({ msg: "Arquivo deve ser uma imagem" });
+            }
+            
+            if (anuncioTipo === 'video' && !isVideo) {
+                deleteUploadedFile();
+                return res.status(400).json({ msg: "Arquivo deve ser um vídeo" });
+            }
         }
 
         const midiaUrl = uploadedFile ? `${backendUrl}/uploads/midias-anuncio/${uploadedFile.filename}` : null;
@@ -89,7 +170,7 @@ export const criarAnuncio = async (req, res) => {
 
         const novoAnuncio = await Anuncio.create(anuncioData);
 
-        novoAnuncio.save();
+        await novoAnuncio.save();
 
         return res.status(201).json({
             msg: "Anúncio criado com sucesso",
@@ -104,11 +185,11 @@ export const criarAnuncio = async (req, res) => {
             }
         }
 
-        console.log('Erro ao criar anúncio:', error);
+        console.error('Erro ao criar anúncio:', error);
 
         return res.status(500).json({
             msg: "Erro ao criar anúncio",
-            error: error.msg
+            error: error.message
         });
     }
 }

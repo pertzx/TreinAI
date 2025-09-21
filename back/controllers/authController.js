@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import User from '../models/User.js';
 import dotenv from 'dotenv';
+import validator from 'validator';
+import rateLimit from 'express-rate-limit';
 import OpenAI from 'openai';
 import { v4 as uuidv4 } from 'uuid'
 import fs from 'fs';
@@ -18,6 +20,8 @@ dotenv.config();
 
 const SECRET_JWT = process.env.SECRET_JWT;
 const SALT_ROUNDS = 10;
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutos
 
 // cria __filename e __dirname em ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -33,6 +37,38 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const openai = OPENAI_KEY ? new OpenAI({ apiKey: OPENAI_KEY }) : null;
+
+// Validação de entrada
+const validateInput = {
+    email: (email) => {
+        if (!email || typeof email !== 'string') return 'Email é obrigatório';
+        if (!validator.isEmail(email)) return 'Email inválido';
+        if (email.length > 254) return 'Email muito longo';
+        return null;
+    },
+    password: (password) => {
+        if (!password || typeof password !== 'string') return 'Senha é obrigatória';
+        if (password.length < 8) return 'Senha deve ter pelo menos 8 caracteres';
+        if (password.length > 128) return 'Senha muito longa';
+        if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+            return 'Senha deve conter pelo menos: 1 letra minúscula, 1 maiúscula e 1 número';
+        }
+        return null;
+    },
+    username: (username) => {
+        if (!username || typeof username !== 'string') return 'Nome de usuário é obrigatório';
+        if (username.length < 2) return 'Nome deve ter pelo menos 2 caracteres';
+        if (username.length > 50) return 'Nome muito longo';
+        if (!/^[a-zA-Z0-9\s\-_]+$/.test(username)) return 'Nome contém caracteres inválidos';
+        return null;
+    }
+};
+
+// Sanitização de entrada
+const sanitizeInput = (input) => {
+    if (typeof input !== 'string') return input;
+    return validator.escape(input.trim());
+};
 
 /**
  * Mapear texto/resumo para um objetivo suportado pelo schema
@@ -99,27 +135,74 @@ Retorne apenas o JSON.`;
 // =======================
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email: rawEmail, password: rawPassword } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ msg: "Email e senha são obrigatórios!" });
-    }
+    // Validação de entrada
+    const emailError = validateInput.email(rawEmail);
+    if (emailError) return res.status(400).json({ msg: emailError });
+    
+    const passwordError = validateInput.password(rawPassword);
+    if (passwordError) return res.status(400).json({ msg: passwordError });
+    
+    const email = validator.normalizeEmail(rawEmail);
+    const password = rawPassword;
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ msg: "Usuário não encontrado!" });
+    if (!user) {
+      // Não revelar se usuário existe ou não
+      return res.status(401).json({ msg: "Credenciais inválidas!" });
+    }
+    
+    // Verificar se conta está bloqueada
+    const now = new Date();
+    if (user.stats?.lockedUntil && user.stats.lockedUntil > now) {
+      const remainingTime = Math.ceil((user.stats.lockedUntil - now) / 60000);
+      return res.status(423).json({ 
+        msg: `Conta temporariamente bloqueada. Tente novamente em ${remainingTime} minutos.` 
+      });
+    }
 
     // Comparar senha
     const senhaCorreta = await bcrypt.compare(password, user.password);
     if (!senhaCorreta) {
       // Atualiza falhas de login
       user.stats = user.stats || {};
-      user.stats.failedLoginAttempts = (user.stats.failedLoginAttempts || 0) + 1;
+      const attempts = (user.stats.failedLoginAttempts || 0) + 1;
+      user.stats.failedLoginAttempts = attempts;
+      user.stats.lastFailedLogin = now;
+      
+      // Bloquear conta após muitas tentativas
+      if (attempts >= MAX_LOGIN_ATTEMPTS) {
+        user.stats.lockedUntil = new Date(now.getTime() + LOCKOUT_TIME);
+        await user.save();
+        return res.status(423).json({ 
+          msg: `Conta bloqueada por 15 minutos devido a muitas tentativas inválidas.` 
+        });
+      }
+      
       await user.save();
-      return res.status(401).json({ msg: "Senha incorreta!" });
+      return res.status(401).json({ msg: "Credenciais inválidas!" });
+    }
+
+    // Reset contador de tentativas em login bem-sucedido
+    if (user.stats?.failedLoginAttempts > 0) {
+      user.stats.failedLoginAttempts = 0;
+      user.stats.lockedUntil = null;
+      user.stats.lastFailedLogin = null;
+      await user.save();
     }
 
     // Gera token
-    const token = jwt.sign({ email: user.email }, SECRET_JWT, { expiresIn: "7d" });
+    const token = jwt.sign(
+      { 
+        email: user.email, 
+        userId: user._id,
+        role: user.role,
+        iat: Math.floor(Date.now() / 1000)
+      }, 
+      SECRET_JWT, 
+      { expiresIn: "24h" } // Reduzir tempo de expiração
+    );
 
     return res.json({
       msg: "Login realizado com sucesso!",
@@ -127,6 +210,7 @@ export const login = async (req, res) => {
       userId: user._id,
     });
   } catch (err) {
+    console.error('Login error:', err);
     return res.status(500).json({ msg: "Erro no login", error: err.message });
   }
 };
@@ -136,37 +220,76 @@ export const login = async (req, res) => {
 // =======================
 export const signup = async (req, res) => {
   try {
-    const { email, password, username, plano } = req.body;
+    const { email: rawEmail, password: rawPassword, username: rawUsername, plano } = req.body;
 
-    if (!email || !password || !username || !plano) {
-      return res.status(400).json({ msg: 'Email, senha, nome de usuário e plano são obrigatórios.' });
+    // Validação de entrada
+    const emailError = validateInput.email(rawEmail);
+    if (emailError) return res.status(400).json({ msg: emailError });
+    
+    const passwordError = validateInput.password(rawPassword);
+    if (passwordError) return res.status(400).json({ msg: passwordError });
+    
+    const usernameError = validateInput.username(rawUsername);
+    if (usernameError) return res.status(400).json({ msg: usernameError });
+    
+    if (!plano || !['free', 'pro', 'max', 'coach'].includes(plano)) {
+      return res.status(400).json({ msg: 'Plano inválido' });
     }
+    
+    const email = validator.normalizeEmail(rawEmail);
+    const username = sanitizeInput(rawUsername);
+    const password = rawPassword;
 
     const userExistente = await User.findOne({ email });
     if (userExistente) {
       return res.status(400).json({ msg: "Este usuário já existe." });
     }
+    
+    // Verificar se username já existe
+    const usernameExistente = await User.findOne({ username });
+    if (usernameExistente) {
+      return res.status(400).json({ msg: "Nome de usuário já está em uso." });
+    }
 
     // Hash da senha
     const hashSenha = await bcrypt.hash(password, SALT_ROUNDS);
 
-    if (plano === 'free' || plano === 'pro' || plano === 'max' || plano === 'coach') {
-      const newUser = await User.create({
-        username,
-        email,
-        password: hashSenha,
-        planInfos: { status: 'inativo', planType: plano }
-      });
+    const newUser = await User.create({
+      username,
+      email,
+      password: hashSenha,
+      planInfos: { status: 'inativo', planType: plano },
+      stats: {
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        lastFailedLogin: null
+      }
+    });
 
-      // Gera token
-      const token = jwt.sign({ email }, SECRET_JWT, { expiresIn: "7d" });
+    // Gera token
+    const token = jwt.sign(
+      { 
+        email: newUser.email, 
+        userId: newUser._id,
+        role: newUser.role,
+        iat: Math.floor(Date.now() / 1000)
+      }, 
+      SECRET_JWT, 
+      { expiresIn: "24h" }
+    );
 
-      return res.status(201).json({ msg: 'Usuário criado com sucesso!', newUser, token });
-    } else {
-      return res.json({ msg: "!(plano === 'free' || plano === 'pro' || plano === 'max' || plano === 'coach')" })
-    }
+    // Remover senha do objeto retornado
+    const userResponse = newUser.toObject();
+    delete userResponse.password;
+
+    return res.status(201).json({ 
+      msg: 'Usuário criado com sucesso!', 
+      newUser: userResponse, 
+      token 
+    });
 
   } catch (err) {
+    console.error('Signup error:', err);
     return res.status(500).json({ msg: "Erro ao criar usuário", error: err.message });
   }
 };

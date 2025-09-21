@@ -2,20 +2,42 @@ import Anuncio from "../models/Anuncios.js";
 import User from "../models/User.js";
 import Support from "../models/Support.js";
 import { getBrazilDate } from "../helpers/getBrazilDate.js";
+import validator from 'validator';
+import mongoose from 'mongoose';
+
+// Validação de ObjectId
+const isValidObjectId = (id) => {
+    return id && mongoose.Types.ObjectId.isValid(id);
+};
+
+// Sanitização de entrada
+const sanitizeInput = (input) => {
+    if (typeof input !== 'string') return input;
+    return validator.escape(input.trim());
+};
 
 export const getUsers = async (req, res) => {
     try {
         const { adminId } = req.body;
+
+        if (!isValidObjectId(adminId)) {
+            return res.status(400).json({ msg: 'ID de administrador inválido' });
+        }
 
         const user = await User.findById(adminId);
         if (!user || user.role !== 'admin') {
             return res.status(403).json({ message: 'Acesso negado. Apenas administradores podem acessar esta rota.' });
         }
 
+        // Não retornar senhas e dados sensíveis
         const users = await User.find()
+            .select('-password -stats.tokens -stats.ipHistory -stats.deviceHistory')
+            .limit(1000) // Limitar quantidade de usuários retornados
+            .lean();
 
         return res.status(200).json({ users, success: true, msg: 'Sucesso ao buscar usuários como admin.' });
     } catch (error) {
+        console.error('getUsers error:', error);
         return res.status(500).json({ success: false, msg: "Erro ao buscar usuários.", error: error.message || String(error) });
     }
 };
@@ -24,20 +46,23 @@ export const getAnunciosByAdmin = async (req, res) => {
     try {
         const { adminId } = req.body;
 
-        const user = await User.findById({
-            where: {
-                ...(adminId && { adminId }),
-            }
-        });
+        if (!isValidObjectId(adminId)) {
+            return res.status(400).json({ msg: 'ID de administrador inválido' });
+        }
+
+        const user = await User.findById(adminId).select('role');
         if (user.role !== 'admin') {
             return res.status(403).json({ message: 'Acesso negado. Apenas administradores podem acessar esta rota.' });
         }
 
         // Lógica para buscar anúncios
-        const anuncios = await Anuncio.find();
+        const anuncios = await Anuncio.find()
+            .limit(1000) // Limitar quantidade
+            .lean();
 
         return res.status(200).json({ anuncios, success: true, msg: 'Sucesso ao buscar anúncios como admin.' });
     } catch (error) {
+        console.error('getAnunciosByAdmin error:', error);
         return res.status(500).json({ success: false, msg: "Erro ao buscar anúncios.", error: error.message || String(error) });
     }
 }
@@ -46,20 +71,26 @@ export const alterarStatusAnuncio = async (req, res) => {
     try {
         const { adminId, anuncioId, novoStatus } = req.body;
 
+        if (!isValidObjectId(adminId)) {
+            return res.status(400).json({ msg: 'ID de administrador inválido' });
+        }
+        
+        if (!anuncioId || typeof anuncioId !== 'string') {
+            return res.status(400).json({ msg: 'ID do anúncio inválido' });
+        }
+        
+        if (!['ativo', 'inativo'].includes(novoStatus)) {
+            return res.status(400).json({ msg: 'Status inválido. Use "ativo" ou "inativo".' });
+        }
+
         const user = await User.findById(adminId);
         if (!user || user.role !== 'admin') {
             return res.status(403).json({ msg: 'Acesso negado. Apenas administradores podem acessar esta rota.' });
         }
         
-        if (!anuncioId) return res.json({ msg: '!anuncioId' });
-
         const anuncio = await Anuncio.findOne({ anuncioId });
         if (!anuncio) {
             return res.status(404).json({ msg: 'Anúncio não encontrado.' });
-        }
-
-        if (novoStatus !== 'ativo' && novoStatus !== 'inativo') {
-            return res.status(400).json({ msg: 'Status inválido. Use "ativo" ou "inativo".' });
         }
 
         if (anuncio.status === novoStatus) {
@@ -71,6 +102,7 @@ export const alterarStatusAnuncio = async (req, res) => {
 
         return res.status(200).json({ success: true, msg: `Status do anúncio alterado para "${novoStatus}".`, anuncio });
     } catch (error) {
+        console.error('alterarStatusAnuncio error:', error);
         return res.status(500).json({ success: false, msg: "Erro ao alterar status do anúncio.", error: error.message || String(error) });
     }
 }
