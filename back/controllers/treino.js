@@ -54,7 +54,9 @@ export const adicionarExercicio = async (req, res) => {
         if (!user) return res.status(404).json({ ok: false, msg: 'User not found' });
 
         // check if exists (case-insensitive)
-        const existing = await Exercicio.findOne({ exercicioName: new RegExp(`^${exercicioName}$`, 'i') });
+        const existing = await Exercicio.findOne({ $where: {
+            ...(exercicioName && { exercicioName })
+        } });
 
         if (existing && !forceUpdate) {
             // If exists, return the existing resource (avoid duplicates). Client can request update via forceUpdate.
