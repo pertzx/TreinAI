@@ -124,7 +124,7 @@ async function removePendingUpload(pendingId) {
     return
   }
 
-  
+
   const p = await safeFindById(PendingUpload, pendingId);
 
   if (!p) return;
@@ -553,7 +553,7 @@ export const StripeWebhook = async (req, res) => {
           return null
         }
         const byId = await safeFindById(User, appUserId);
-        
+
         if (byId) { byId.planInfos = byId.planInfos || {}; byId.planInfos.stripeCustomerId = customerId; await byId.save(); return byId; }
       }
       if (customer?.email) {
