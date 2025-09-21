@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import Local from "../models/local.js";
+import Local from "../models/Local.js";
 import { getBrazilDate } from "../helpers/getBrazilDate.js";
 
 // __dirname compatível ESM
