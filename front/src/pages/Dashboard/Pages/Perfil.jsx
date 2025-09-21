@@ -71,6 +71,9 @@ const Perfil = ({ user, tema = 'light' }) => {
     { value: 'outros', label: 'Outros' }
   ];
 
+  // isValidUrl
+  const isValidUrl = (url) => /^https?:\/\/[^\s]+$/.test(url);
+
   // derived location data
   const countries = locations.countries || [];
   const selectedCountry = countryIndex >= 0 ? countries[countryIndex] : null;
@@ -113,7 +116,9 @@ const Perfil = ({ user, tema = 'light' }) => {
     setGenero(user.perfil?.genero || 'outro');
 
     // avatar preview
-    setAvatar(user.avatar || '');
+    if (isValidUrl(user.avatar)) {
+      setAvatar(user.avatar || '');
+    }
     setAvatarFile(null);
     if (prevAvatarPreviewRef.current) {
       URL.revokeObjectURL(prevAvatarPreviewRef.current);
@@ -234,7 +239,11 @@ const Perfil = ({ user, tema = 'light' }) => {
       });
 
       if (res && res.data) {
-        if (res.data.avatarUrl) setAvatar(res.data.avatarUrl);
+        if (res.data.avatarUrl) {
+          if (isValidUrl(res.data.avatarUrl)) {
+            setAvatar(res.data.avatarUrl || '');
+          }
+        }
         if (res.data.user) {
           const updated = res.data.user;
           setUsername(updated.username || username);
