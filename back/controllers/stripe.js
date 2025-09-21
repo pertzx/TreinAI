@@ -54,8 +54,14 @@ async function moveFile(src, dest) {
 }
 async function unlinkIfExists(fp) {
   try {
-    const exists = await fs.promises.stat(fp).then(() => true).catch(() => false);
-    if (exists) await fs.promises.unlink(fp);
+    // Ensure the path is inside the TMP_DIR for safety
+    const normalizedPath = path.resolve(fp);
+    if (!normalizedPath.startsWith(TMP_DIR + path.sep)) {
+      console.warn('unlinkIfExists: Attempted to unlink file outside TMP_DIR:', normalizedPath);
+      return;
+    }
+    const exists = await fs.promises.stat(normalizedPath).then(() => true).catch(() => false);
+    if (exists) await fs.promises.unlink(normalizedPath);
   } catch (e) {
     console.warn('unlinkIfExists error:', e?.message || e);
   }
