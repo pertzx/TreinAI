@@ -61,12 +61,72 @@ async function unlinkIfExists(fp) {
   }
 }
 
+export const isValidObjectId = (id) => {
+  if (id === null || id === undefined) return false;
+  const s = String(id).trim();
+  if (!s) return false;
+
+  // ObjectId (24 hex) válido
+  if (mongoose.Types.ObjectId.isValid(s)) return true;
+
+  // Id numérico bruto (ex: 91209192)
+  if (/^\d+$/.test(s)) return true;
+
+  // UUID v1-v5
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)) return true;
+
+  return false;
+};
+
+export const safeFindById = async (Model, id) => {
+  if (id === null || id === undefined) return null;
+  const s = String(id).trim();
+  if (!s) return null;
+
+  // se for ObjectId -> findById (rápido e seguro)
+  if (mongoose.Types.ObjectId.isValid(s)) {
+    try { return await Model.findById(s); } catch (e) { return null; }
+  }
+
+  // se for numérico -> tentar campos legacy comuns sem lançar (adapte nomes se tiver campo próprio)
+  if (/^\d+$/.test(s)) {
+    return await Model.findOne({
+      $or: [
+        { legacyNumericId: s },
+        { numericId: s },
+        { externalId: s },
+        { _id: s } // caso você já tenha _id de outro tipo
+      ]
+    }).exec();
+  }
+
+  // se for UUID -> tentar campos comuns
+  if (/^[0-9a-f-]{36}$/i.test(s)) {
+    return await Model.findOne({
+      $or: [
+        { uuid: s },
+        { externalId: s },
+        { _id: s }
+      ]
+    }).exec();
+  }
+
+  return null;
+};
+
 /**
  * Remove pending upload: apaga arquivo tmp e documento PendingUpload
  */
 async function removePendingUpload(pendingId) {
   if (!pendingId) return;
-  const p = await PendingUpload.findById(pendingId);
+
+  if (!isValidObjectId(pendingId)) {
+    return
+  }
+
+  
+  const p = await safeFindById(PendingUpload, pendingId);
+
   if (!p) return;
   try {
     const tmpPath = path.join(TMP_DIR, p.filename);
@@ -75,6 +135,9 @@ async function removePendingUpload(pendingId) {
     console.warn('removePendingUpload: falha ao apagar arquivo tmp:', e?.message || e);
   }
   try {
+    if (!isValidObjectId(pendingId)) {
+      return
+    }
     await PendingUpload.findByIdAndDelete(pendingId);
   } catch (e) {
     console.warn('removePendingUpload: falha ao apagar documento PendingUpload:', e?.message || e);
@@ -148,7 +211,11 @@ export const SessionPaymentSaldoDeImpressoes = async (req, res) => {
     const totalAmount = Math.floor(valorEmReais * 100); // Stripe espera centavos
 
     // Buscar usuário
-    const user = await User.findById(userId);
+    if (!isValidObjectId(userId)) {
+      return res.json({ success: false, msg: 'Passe um ID valido' })
+    }
+
+    const user = await safeFindById(User, userId)
     if (!user) return res.status(404).json({ success: false, msg: 'Usuário não encontrado' });
 
     // Buscar ou criar customer no Stripe
@@ -257,7 +324,9 @@ export const CriarAssinaturaProLocal = async (req, res) => {
     // localizar user (por id) para possivelmente salvar stripeCustomerId
     let user = null;
     try {
-      user = await User.findById(userId).catch(() => null);
+      if (isValidObjectId(userId)) {
+        user = await safeFindById(User, userId);
+      }
     } catch (err) { user = null; }
 
     // localizar ou criar customer no Stripe
@@ -388,7 +457,11 @@ export const CreateCheckoutSession = async (req, res) => {
   if (!priceId) return res.status(400).json({ msg: '!priceId para esse plano' });
 
   try {
-    const user = await User.findById(userId);
+    if (!isValidObjectId(userId)) {
+      return res.status(400).json({ msg: "Passe um ID valido", success: false })
+    }
+
+    const user = await safeFindById(User, userId);
     if (!user) return res.status(404).json({ msg: 'Usuário não encontrado' });
 
     let customerId = user.planInfos?.stripeCustomerId || null;
@@ -476,7 +549,11 @@ export const StripeWebhook = async (req, res) => {
       const customer = await stripe.customers.retrieve(customerId);
       const appUserId = customer?.metadata?.app_user_id || customer?.metadata?.user_id;
       if (appUserId) {
-        const byId = await User.findById(appUserId);
+        if (!isValidObjectId(appUserId)) {
+          return null
+        }
+        const byId = await safeFindById(User, appUserId);
+        
         if (byId) { byId.planInfos = byId.planInfos || {}; byId.planInfos.stripeCustomerId = customerId; await byId.save(); return byId; }
       }
       if (customer?.email) {
@@ -496,7 +573,12 @@ export const StripeWebhook = async (req, res) => {
 
   const applyManualUpdate = async (userId, updates = {}, eventTs = evtCreatedMs) => {
     if (!userId) return null;
-    const user = await User.findById(userId);
+
+    if (!isValidObjectId(userId)) {
+      return null
+    }
+
+    const user = await safeFindById(User, userId);
     if (!user) return null;
     user.planInfos = user.planInfos || {};
     for (const [k, v] of Object.entries(updates)) user.planInfos[k] = v;
@@ -538,7 +620,12 @@ export const StripeWebhook = async (req, res) => {
         try {
           if (session.metadata.flow && session.metadata.flow === 'publish_local' && session.metadata.pendingUploadId) {
             const pendingId = session.metadata.pendingUploadId;
-            const p = await PendingUpload.findById(pendingId);
+            let p = null;
+
+            if (isValidObjectId(pendingId)) {
+              p = await safeFindById(PendingUpload, pendingId);
+            }
+
             if (p) {
               p.subscriptionId = subscriptionId || p.subscriptionId;
               await p.save();
@@ -561,7 +648,10 @@ export const StripeWebhook = async (req, res) => {
             const userId = (session.metadata && session.metadata.userId) || (md && md.userId);
             const quantidade = parseInt((session.metadata && session.metadata.quantidade) || (md && md.quantidade), 10);
             if (!isNaN(quantidade) && quantidade > 0) {
-              const userSaldo = await User.findById(userId);
+              let userSaldo = null;
+              if (isValidObjectId(userId)) {
+                userSaldo = await safeFindById(User, userId);
+              }
               if (userSaldo) {
                 userSaldo.saldoDeImpressoes = (userSaldo.saldoDeImpressoes || 0) + quantidade;
                 await userSaldo.save();
@@ -591,7 +681,11 @@ export const StripeWebhook = async (req, res) => {
 
         // Atualizar user (se aplicável) - mantive sua lógica
         let user = null;
-        if (invoice.metadata?.user_id) user = await User.findById(invoice.metadata.user_id);
+        if (invoice.metadata?.user_id) {
+          if (isValidObjectId(invoice.metadata.user_id)) {
+            user = await safeFindById(User, invoice.metadata.user_id);
+          }
+        }
         if (!user && customerId) user = await User.findOne({ 'planInfos.stripeCustomerId': customerId });
         if (!user && subscriptionId) user = await User.findOne({ 'planInfos.subscriptionId': subscriptionId });
 
@@ -640,7 +734,10 @@ export const StripeWebhook = async (req, res) => {
 
         if (pendingUploadId) {
           try {
-            const pending = await PendingUpload.findById(pendingUploadId);
+            let pending = null;
+            if (isValidObjectId(pendingUploadId)) {
+              pending = await safeFindById(PendingUpload, pendingUploadId);
+            }
             if (!pending) {
               log('invoice.paid: pendingUploadId informado, mas não encontrado:', pendingUploadId);
             } else {
@@ -703,7 +800,9 @@ export const StripeWebhook = async (req, res) => {
 
               // remover PendingUpload (arquivo já movido)
               try {
-                await PendingUpload.findByIdAndDelete(pendingUploadId);
+                if (isValidObjectId(pendingUploadId)) {
+                  await PendingUpload.findByIdAndDelete(pendingUploadId);
+                }
               } catch (e) {
                 console.warn('invoice.paid: falha ao remover PendingUpload (não crítico):', e?.message || e);
               }
@@ -827,7 +926,11 @@ export const StripeWebhook = async (req, res) => {
         // usuário: marca inativo conforme sua lógica original
         try {
           let user = null;
-          if (md.user_id) user = await User.findById(md.user_id);
+          if (md.user_id) {
+            if (isValidObjectId(md.user_id)) {
+              user = await safeFindById(User, md.user_id);
+            }
+          }
           if (!user && customerId) user = await User.findOne({ 'planInfos.stripeCustomerId': customerId });
           if (!user && subscriptionId) user = await User.findOne({ 'planInfos.subscriptionId': subscriptionId });
           if (user) {
@@ -896,7 +999,11 @@ export const StripeWebhook = async (req, res) => {
         } else {
           try {
             let user = null;
-            if (md.user_id) user = await User.findById(md.user_id);
+            if (md.user_id) {
+              if (isValidObjectId(md.user_id)) {
+                user = await safeFindById(User, md.user_id);
+              }
+            }
             if (!user && customerId) user = await ensureUserByCustomer(customerId);
             if (!user && subscriptionId) user = await findUserBySubscription(subscriptionId);
             if (user) {
@@ -973,7 +1080,10 @@ export const atualizarPlano = async (req, res) => {
       coach: process.env.STRIPE_PRICEID_COACH,
     };
 
-    const user = await User.findById(userId);
+    let user = null;
+    if (isValidObjectId(userId)) {
+      user = await safeFindById(User, userId);
+    }
     if (!user) {
       console.warn('[atualizarPlano] Usuário não encontrado', { userId, email });
       return res.status(404).json({ msg: '!usuario' });
@@ -1261,7 +1371,9 @@ export const deletarLocal = async (req, res) => {
     // apagar local no banco
     try {
       if (local._id) {
-        await Local.findByIdAndDelete(local._id);
+        if (isValidObjectId(local._id)) {
+          await Local.findByIdAndDelete(local._id);
+        }
         log('deletarLocal: Local removido do DB:', local._id);
       } else {
         await Local.findOneAndDelete({ localId });
